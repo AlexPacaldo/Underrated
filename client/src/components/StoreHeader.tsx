@@ -34,11 +34,8 @@ export default function StoreHeader() {
       <header className={`fixed inset-x-0 top-0 z-40 transition-colors duration-200 ${scrolled || location !== "/" ? "border-b border-white/10 bg-[#0c0d0e]/95 backdrop-blur-md" : "bg-gradient-to-b from-black/80 to-transparent"}`}>
         <div className="mx-auto flex h-[68px] max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-9">
           <Link href="/" className="flex items-center gap-3 text-white" aria-label="Underrated Cycling home">
-            <img src="/manus-storage/underrated-uc-mark_0e5d4462.png" alt="" className="size-9 object-contain sm:size-10" />
-            <span className="leading-[0.72]">
-              <span className="font-display block text-[23px] uppercase tracking-[-0.07em] sm:text-[25px]">Underrated</span>
-              <span className="ml-0.5 block text-[8px] font-bold uppercase tracking-[0.22em] text-white/60">Cycling Co.</span>
-            </span>
+            <img src="/brand/ur-logo.png" alt="" className="size-9 object-contain sm:size-10" />
+            <img src="/brand/underrated-wordmark.png" alt="Underrated Cycling Co." className="block h-7 w-auto object-contain sm:h-8" />
           </Link>
 
           <nav className="hidden items-center gap-7 lg:flex" aria-label="Main navigation">

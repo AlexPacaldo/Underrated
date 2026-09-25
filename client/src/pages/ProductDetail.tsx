@@ -36,7 +36,7 @@ export default function ProductDetail() {
           <ProductGallery product={product} />
           <div className="flex flex-col justify-center pb-3 lg:pt-6">
             <div className="flex items-center justify-between border-b border-white/15 pb-3"><span className="text-[10px] font-bold uppercase tracking-[.16em] text-[#ff5a36]">{product.category}</span>{product.badge ? <span className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">{product.badge}</span> : null}</div>
-            <div className="mt-4 flex items-end justify-between overflow-hidden border-b border-white/10 pb-2"><div className="flex items-center gap-3"><img src="/manus-storage/underrated-uc-mark_0e5d4462.png" alt="" className="size-10 object-contain" /><span className="font-display text-3xl uppercase tracking-[-.06em] text-white">Underrated</span></div><span className="font-display -mb-3 text-7xl uppercase leading-none text-white/[.07]">Stamped</span></div>
+            <div className="mt-4 flex items-end justify-between overflow-hidden border-b border-white/10 pb-2"><div className="flex items-center gap-3"><img src="/brand/ur-logo.png" alt="" className="size-10 object-contain" /><img src="/brand/underrated-wordmark.png" alt="Underrated Cycling Co." className="h-8 w-auto object-contain" /></div><span className="font-display -mb-3 text-7xl uppercase leading-none text-white/[.07]">Stamped</span></div>
             <h1 className="mt-7 font-display text-6xl uppercase leading-[.78] tracking-[-.05em] text-white sm:text-7xl">{product.name}</h1>
             <p className="mt-4 text-xl font-medium text-[#ff5a36]">{money(product.price)}</p>
             <p className="mt-6 max-w-xl text-sm leading-7 text-white/55">{product.description}</p>

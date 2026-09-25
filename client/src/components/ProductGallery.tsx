@@ -38,7 +38,7 @@ export default function ProductGallery({ product }: { product: Product }) {
         <GalleryFrame product={product} view={selected} />
         <span className="absolute left-4 top-4 text-[10px] font-bold uppercase tracking-[.16em] text-white/50">{view.index} / {view.label}</span>
         <span className="absolute -bottom-4 left-4 font-display text-9xl uppercase leading-none text-white/[.08]">{product.category}</span>
-        <img src="/manus-storage/underrated-uc-mark_0e5d4462.png" alt="" className="absolute bottom-4 right-4 size-9 object-contain opacity-65" />
+        <img src="/brand/ur-logo.png" alt="" className="absolute bottom-4 right-4 size-9 object-contain opacity-65" />
         <button onClick={() => setZoomOpen(true)} className="absolute bottom-4 right-16 inline-flex items-center gap-2 border border-white/30 bg-black/45 px-3 py-2 text-[10px] font-bold uppercase tracking-[.14em] text-white backdrop-blur-sm transition hover:border-[#ff5a36] hover:text-[#ff5a36]" aria-label={`Zoom ${product.name} ${view.label}`}><Maximize2 size={14} />Inspect</button>
       </div>
 
