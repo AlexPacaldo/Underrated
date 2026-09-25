@@ -9,8 +9,6 @@ import { useStore } from "@/contexts/StoreContext";
 
 const navItems = [
   { href: "/shop", label: "Shop" },
-  { href: "/shop?category=Cockpit", label: "Cockpit" },
-  { href: "/shop?category=Hoods", label: "Hoods" },
   { href: "/about", label: "About" },
 ];
 
