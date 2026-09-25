@@ -18,7 +18,7 @@ type AuthContextValue = {
   profile: AccountProfile | null;
   loading: boolean;
   isConfigured: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (redirectTo?: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -94,12 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       loading,
       isConfigured: Boolean(supabase),
-      signInWithGoogle: async () => {
+      signInWithGoogle: async (redirectTo = window.location.origin) => {
         if (!supabase) return;
         const { error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {
-            redirectTo: window.location.origin,
+            redirectTo,
             queryParams: {
               access_type: "offline",
               prompt: "consent",

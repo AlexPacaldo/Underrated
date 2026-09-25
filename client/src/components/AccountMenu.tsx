@@ -3,6 +3,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { useAuth } from "@/contexts/AuthContext";
 import { LogIn, LogOut, ShieldCheck, User } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "wouter";
 
 function initials(name?: string | null, email?: string | null) {
   const source = name || email || "Rider";
@@ -15,21 +16,8 @@ function initials(name?: string | null, email?: string | null) {
 }
 
 export default function AccountMenu() {
-  const { user, profile, loading, isConfigured, signInWithGoogle, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const displayName = profile?.full_name || user?.email || "Rider";
-
-  const handleGoogleSignIn = async () => {
-    if (!isConfigured) {
-      toast.error("Supabase is not configured yet.", { description: "Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel and your local .env." });
-      return;
-    }
-
-    try {
-      await signInWithGoogle();
-    } catch (error) {
-      toast.error("Google sign-in failed.", { description: error instanceof Error ? error.message : "Try again in a moment." });
-    }
-  };
 
   const handleSignOut = async () => {
     try {
@@ -41,10 +29,10 @@ export default function AccountMenu() {
 
   if (!user) {
     return (
-      <button onClick={handleGoogleSignIn} disabled={loading} className="flex h-9 items-center gap-2 border border-white/15 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white/85 transition hover:border-[#ff5a36] hover:text-[#ff5a36] disabled:cursor-wait disabled:opacity-55" aria-label="Sign in with Google">
+      <Link href="/sign-in" className="flex h-9 items-center gap-2 border border-white/15 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white/85 transition hover:border-[#ff5a36] hover:text-[#ff5a36]" aria-label="Open sign in screen">
         <LogIn size={15} />
-        <span className="hidden sm:inline">Google</span>
-      </button>
+        <span className="hidden sm:inline">Sign in</span>
+      </Link>
     );
   }
 
@@ -67,9 +55,8 @@ export default function AccountMenu() {
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-white/10" />
-        <DropdownMenuItem className="rounded-none text-xs text-white/70 focus:bg-[#ff5a36] focus:text-black" disabled>
-          <User size={14} />
-          Account dashboard soon
+        <DropdownMenuItem asChild className="rounded-none text-xs text-white/70 focus:bg-[#ff5a36] focus:text-black">
+          <Link href="/account"><User size={14} />Account dashboard</Link>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handleSignOut} className="rounded-none text-xs text-white/70 focus:bg-[#ff5a36] focus:text-black">
           <LogOut size={14} />
