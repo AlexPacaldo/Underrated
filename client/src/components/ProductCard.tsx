@@ -1,7 +1,8 @@
 /**
  * Design direction: Technical Drop Editorial — product cards read as graphic equipment labels, not rounded marketplace tiles.
  */
-import { money, Product } from "@/data/products";
+import { useCurrency } from "@/contexts/CurrencyContext";
+import { Product } from "@/data/products";
 import { Plus } from "lucide-react";
 import { Link } from "wouter";
 import { useStore } from "@/contexts/StoreContext";
@@ -9,6 +10,7 @@ import ProductVisual from "@/components/ProductVisual";
 
 export default function ProductCard({ product, priority = false }: { product: Product; priority?: boolean }) {
   const { addToCart } = useStore();
+  const { formatMoney } = useCurrency();
 
   return (
     <article className="group border-t border-white/15 pt-3">
@@ -28,7 +30,7 @@ export default function ProductCard({ product, priority = false }: { product: Pr
           <p className="mt-1 text-xs text-white/45">{product.descriptor}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="pt-1 text-sm font-bold text-white">{money(product.price)}</span>
+          <span className="pt-1 text-sm font-bold text-white">{formatMoney(product.price)}</span>
           <button aria-label={`Add ${product.name} to cart`} onClick={() => addToCart(product)} className="grid size-8 place-items-center border border-white/25 text-white transition hover:border-[#ff5a36] hover:bg-[#ff5a36] active:scale-95">
             <Plus size={15} strokeWidth={2.5} />
           </button>

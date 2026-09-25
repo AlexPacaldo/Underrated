@@ -1,8 +1,5 @@
-/**
- * Design direction: Technical Drop Editorial - the cart stays direct and machine-like, with no hidden commerce complexity.
- */
 import { useAuth } from "@/contexts/AuthContext";
-import { products } from "@/data/products";
+import { useCatalog } from "@/contexts/CatalogContext";
 import type { Product } from "@/data/products";
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
@@ -24,6 +21,7 @@ type StoreContextValue = {
 const StoreContext = createContext<StoreContextValue | undefined>(undefined);
 const LEGACY_CART_KEY = "underrated-cart";
 const GUEST_CART_KEY = "underrated-cart:guest";
+const MAX_LINE_QUANTITY = 99;
 
 function mergeCartLines(...carts: CartLine[][]) {
   const merged = new Map<string, CartLine>();
@@ -32,7 +30,7 @@ function mergeCartLines(...carts: CartLine[][]) {
       if (!line.id || !line.finish || line.quantity <= 0) continue;
       const key = `${line.id}-${line.finish}`;
       const existing = merged.get(key);
-      merged.set(key, existing ? { ...existing, quantity: existing.quantity + line.quantity } : line);
+      merged.set(key, existing ? { ...existing, quantity: Math.min(MAX_LINE_QUANTITY, existing.quantity + line.quantity) } : { ...line, quantity: Math.min(MAX_LINE_QUANTITY, line.quantity) });
     }
   }
   return Array.from(merged.values());
@@ -51,6 +49,7 @@ function readCart(storageKey: string) {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
+  const { products } = useCatalog();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [loadedCartKey, setLoadedCartKey] = useState<string | null>(null);
@@ -107,20 +106,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       openCart: () => setCartOpen(true),
       closeCart: () => setCartOpen(false),
       addToCart: (product, finish = product.finishes[0]) => {
+        if (!finish) return;
         setCart((lines) => {
           const existing = lines.find((line) => line.id === product.id && line.finish === finish);
-          if (existing) return lines.map((line) => (line === existing ? { ...line, quantity: line.quantity + 1 } : line));
+          if (existing) return lines.map((line) => (line === existing ? { ...line, quantity: Math.min(MAX_LINE_QUANTITY, line.quantity + 1) } : line));
           return [...lines, { id: product.id, quantity: 1, finish }];
         });
         setCartOpen(true);
       },
       updateQuantity: (id, finish, quantity) => {
-        setCart((lines) => lines.flatMap((line) => (line.id === id && line.finish === finish ? (quantity > 0 ? [{ ...line, quantity }] : []) : [line])));
+        setCart((lines) => lines.flatMap((line) => (line.id === id && line.finish === finish ? (quantity > 0 ? [{ ...line, quantity: Math.min(MAX_LINE_QUANTITY, Math.floor(quantity)) }] : []) : [line])));
       },
       removeLine: (id, finish) => setCart((lines) => lines.filter((line) => line.id !== id || line.finish !== finish)),
       clearCart: () => setCart([]),
     };
-  }, [cart, cartOpen]);
+  }, [cart, cartOpen, products]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

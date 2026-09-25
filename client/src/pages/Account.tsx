@@ -1,5 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { money } from "@/data/products";
+import { useCurrency } from "@/contexts/CurrencyContext";
 import { fetchAccountOrders, type AccountOrder } from "@/lib/accountOrders";
 import { formatDeliveryAddress } from "@/lib/deliveryAddress";
 import { ArrowRight, Clock3, LogIn, PackageCheck, ReceiptText, ShieldCheck } from "lucide-react";
@@ -12,6 +12,9 @@ const statusLabels: Record<AccountOrder["status"], string> = {
   paid: "Paid",
   rejected: "Rejected",
   cancelled: "Cancelled",
+  processing: "Processing",
+  shipped: "Shipped",
+  delivered: "Delivered",
 };
 
 function formatDate(value: string) {
@@ -20,6 +23,7 @@ function formatDate(value: string) {
 
 export default function Account() {
   const { user, profile, loading, isConfigured } = useAuth();
+  const { formatMoney } = useCurrency();
   const [orders, setOrders] = useState<AccountOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
@@ -135,7 +139,7 @@ export default function Account() {
                     <p className="mt-2 text-xs text-white/40">{formatDate(order.created_at)}</p>
                   </div>
                   <div className="sm:text-right">
-                    <p className="font-display text-3xl leading-none text-white">{money(order.total_cents / 100)}</p>
+                    <p className="font-display text-3xl leading-none text-white">{formatMoney(order.total_cents / 100, order.display_currency, order.fx_rate)}</p>
                     <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#ff5a36]">{statusLabels[order.status]}</p>
                   </div>
                 </div>
@@ -146,7 +150,7 @@ export default function Account() {
                   {order.order_items.map((item) => (
                     <div key={item.id} className="flex items-center justify-between gap-3 bg-white/[.03] px-3 py-2 text-xs text-white/55">
                       <span>{item.quantity}x {item.product_name} / {item.finish}</span>
-                      <span className="font-bold text-white">{money(item.line_total_cents / 100)}</span>
+                      <span className="font-bold text-white">{formatMoney(item.line_total_cents / 100, order.display_currency, order.fx_rate)}</span>
                     </div>
                   ))}
                 </div>

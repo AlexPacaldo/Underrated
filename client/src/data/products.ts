@@ -1,18 +1,17 @@
-/**
- * Design direction: Technical Drop Editorial — sparse product data for a dark, high-contrast cycling storefront.
- */
+export type ProductVisual = "hoods" | "valve" | "saddle" | "tape" | "stem" | "stand";
+
 export type Product = {
   id: string;
   slug: string;
   name: string;
-  category: "Hoods" | "Valve Caps" | "Cockpit" | "Saddles" | "Accessories";
+  category: string;
   price: number;
   badge?: string;
   descriptor: string;
   description: string;
   finishes: string[];
   image?: string;
-  visual: "hoods" | "valve" | "saddle" | "tape" | "stem" | "stand";
+  visual: ProductVisual;
   specs: { label: string; value: string }[];
   fitment: {
     headline: string;
@@ -20,6 +19,14 @@ export type Product = {
     checkBeforeRide: string;
   };
   featured?: boolean;
+  archived?: boolean;
+  sortOrder?: number;
+};
+
+export type CatalogCategory = {
+  name: string;
+  index: string;
+  note: string;
 };
 
 export const products: Product[] = [
@@ -28,7 +35,7 @@ export const products: Product[] = [
     slug: "stealth-hoods",
     name: "Stealth Hoods",
     category: "Hoods",
-    price: 64,
+    price: 3800,
     badge: "New drop",
     descriptor: "Variation without compromise.",
     description: "A sculpted grip profile for the riders who tune every touchpoint. Built to feel planted in the sprint and quiet on the long way home.",
@@ -45,13 +52,14 @@ export const products: Product[] = [
       checkBeforeRide: "Confirm your lever-body shape and current hood dimensions before removing the original pair.",
     },
     featured: true,
+    sortOrder: 1,
   },
   {
     id: "rocket-valve-cap",
     slug: "rocket-valve-cap",
     name: "Rocket Valve Cap",
     category: "Valve Caps",
-    price: 18,
+    price: 950,
     badge: "Limited run",
     descriptor: "Small part. Loud signal.",
     description: "A pocket-sized detail with a machined finish and enough color to change the whole build. Sold as a pair.",
@@ -69,13 +77,14 @@ export const products: Product[] = [
       checkBeforeRide: "Check that your valve core and extender leave enough exposed thread for a secure hand-tight fit.",
     },
     featured: true,
+    sortOrder: 2,
   },
   {
     id: "iced-saddle",
     slug: "iced-saddle",
     name: "Iced Saddle",
     category: "Saddles",
-    price: 112,
+    price: 6500,
     descriptor: "A clean break from the expected.",
     description: "A narrow-profile saddle shaped for quick position changes, finished in an ice-white composite surface that turns a build into a statement.",
     finishes: ["Iced White", "Graphite"],
@@ -92,13 +101,14 @@ export const products: Product[] = [
       checkBeforeRide: "Confirm rail-clamp compatibility and observe your seatpost’s recommended torque before final adjustment.",
     },
     featured: true,
+    sortOrder: 3,
   },
   {
     id: "deep-blue-tape",
     slug: "deep-blue-tape",
     name: "Deep Blue Tape",
     category: "Cockpit",
-    price: 32,
+    price: 1800,
     descriptor: "Hold the line.",
     description: "Cushioned tape with a tightly controlled wrap texture, made to pull a cockpit together without swallowing the detail.",
     finishes: ["Deep Blue", "Graphite", "Iced White"],
@@ -114,13 +124,14 @@ export const products: Product[] = [
       checkBeforeRide: "Measure your current wrap and leave a little excess before trimming the final bar-end finish.",
     },
     featured: true,
+    sortOrder: 4,
   },
   {
     id: "covert-stem",
     slug: "covert-stem",
     name: "Covert Stem",
     category: "Cockpit",
-    price: 78,
+    price: 4500,
     descriptor: "No wasted surface.",
     description: "A compact forged alloy stem with a low visual profile and an unapologetically dark finish.",
     finishes: ["Graphite"],
@@ -135,13 +146,14 @@ export const products: Product[] = [
       compatibility: ["31.8 mm road or gravel handlebars", "1⅛ in threadless steerers", "Available in three reach lengths"],
       checkBeforeRide: "Confirm handlebar clamp size, steerer diameter, and cable clearance before you commit to a length.",
     },
+    sortOrder: 5,
   },
   {
     id: "display-stand",
     slug: "display-stand",
     name: "Trophy Display Stand",
     category: "Accessories",
-    price: 46,
+    price: 2500,
     badge: "Workshop pick",
     descriptor: "Park it with intention.",
     description: "A compact display piece for the build that refuses to hide in a corner between rides.",
@@ -157,15 +169,21 @@ export const products: Product[] = [
       compatibility: ["Road and track wheel profiles", "Clean indoor floors and studio setups", "Non-marking rubber contact point"],
       checkBeforeRide: "Use the stand only on a level surface and confirm the wheel sits fully in the support channel.",
     },
+    sortOrder: 6,
   },
 ];
 
-export const categories = [
+export const categories: CatalogCategory[] = [
   { name: "Cockpit", index: "01", note: "Tape · Stems · Control" },
   { name: "Hoods", index: "02", note: "Grip · Shape · Signal" },
   { name: "Valve Caps", index: "03", note: "Small parts · Big read" },
   { name: "Saddles", index: "04", note: "Contact · Profile · Pace" },
 ];
 
-export const money = (value: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+export function money(value: number, currency = "PHP", rate = 1, locale = "en-PH") {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: currency === "JPY" ? 0 : 2,
+  }).format(value * rate);
+}

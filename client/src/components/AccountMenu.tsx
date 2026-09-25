@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogIn, LogOut, ShieldCheck, User } from "lucide-react";
+import { LayoutDashboard, LogIn, LogOut, ShieldCheck, User } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 
@@ -58,6 +58,7 @@ export default function AccountMenu() {
         <DropdownMenuItem asChild className="rounded-none text-xs text-white/70 focus:bg-[#ff5a36] focus:text-black">
           <Link href="/account"><User size={14} />Account dashboard</Link>
         </DropdownMenuItem>
+        {profile?.role === "admin" ? <DropdownMenuItem asChild className="rounded-none text-xs text-white/70 focus:bg-[#ff5a36] focus:text-black"><Link href="/admin"><LayoutDashboard size={14} />Store administration</Link></DropdownMenuItem> : null}
         <DropdownMenuItem onClick={handleSignOut} className="rounded-none text-xs text-white/70 focus:bg-[#ff5a36] focus:text-black">
           <LogOut size={14} />
           Sign out

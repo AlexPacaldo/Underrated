@@ -5,6 +5,7 @@ import { Menu, Search, ShoppingBag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import AccountMenu from "@/components/AccountMenu";
+import { supportedCurrencies, useCurrency } from "@/contexts/CurrencyContext";
 import { useStore } from "@/contexts/StoreContext";
 
 const navItems = [
@@ -14,6 +15,7 @@ const navItems = [
 
 export default function StoreHeader() {
   const { totalItems, openCart } = useStore();
+  const { currency, setCurrency } = useCurrency();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [location] = useLocation();
@@ -48,6 +50,12 @@ export default function StoreHeader() {
             <Link href="/shop" className="grid size-9 place-items-center text-white/85 transition hover:text-[#ff5a36]" aria-label="Search the shop">
               <Search size={18} />
             </Link>
+            <label className="border border-white/15 bg-transparent text-[10px] font-bold uppercase tracking-[.12em] text-white/65">
+              <span className="sr-only">Display currency</span>
+              <select value={currency} onChange={(event) => setCurrency(event.target.value as (typeof supportedCurrencies)[number]["code"])} className="h-9 bg-transparent px-1 text-[10px] text-white outline-none sm:px-2">
+                {supportedCurrencies.map((item) => <option key={item.code} value={item.code} className="bg-[#111214]">{item.code}</option>)}
+              </select>
+            </label>
             <AccountMenu />
             <button onClick={openCart} className="relative grid size-9 place-items-center text-white/85 transition hover:text-[#ff5a36]" aria-label={`Open cart with ${totalItems} items`}>
               <ShoppingBag size={18} />

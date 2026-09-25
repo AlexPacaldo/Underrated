@@ -1,7 +1,8 @@
 /**
  * Design direction: Technical Drop Editorial — the cart is a sliding workshop drawer with plain-language prototype status.
  */
-import { money, products } from "@/data/products";
+import { useCatalog } from "@/contexts/CatalogContext";
+import { useCurrency } from "@/contexts/CurrencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import DeliveryAddressForm from "@/components/DeliveryAddressForm";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,9 +18,10 @@ import { toast } from "sonner";
 import ProductVisual from "@/components/ProductVisual";
 
 const shippingRegions: { value: ShippingRegion; label: string; timing: string }[] = [
-  { value: "us", label: "United States", timing: "2–5 business days" },
-  { value: "canada", label: "Canada", timing: "5–8 business days" },
-  { value: "international", label: "International", timing: "7–14 business days" },
+  { value: "ph", label: "Philippines", timing: "2–4 business days" },
+  { value: "us", label: "United States", timing: "5–8 business days" },
+  { value: "canada", label: "Canada", timing: "7–10 business days" },
+  { value: "international", label: "International", timing: "10–18 business days" },
 ];
 
 const paymentDetails = {
@@ -33,6 +35,8 @@ const paymentDetails = {
 
 export default function CartDrawer() {
   const { user, profile, isConfigured, signInWithGoogle, saveDefaultAddress } = useAuth();
+  const { products } = useCatalog();
+  const { currency, rate, rateReady, formatMoney } = useCurrency();
   const { cart, cartOpen, closeCart, subtotal, updateQuantity, removeLine, clearCart } = useStore();
   const [deliveryAddress, setDeliveryAddress] = useState<DeliveryAddress>(emptyDeliveryAddress);
   const [addressMode, setAddressMode] = useState<"saved" | "new">("new");
@@ -76,18 +80,20 @@ export default function CartDrawer() {
   const activeAddress = addressMode === "saved" && normalizedSavedAddress && hasSavedAddress ? normalizedSavedAddress : deliveryAddress;
   const addressIsValid = isValidDeliveryAddress(activeAddress);
   const activeShippingRegion = shippingRegionForAddress(activeAddress);
-  const selectedRegion = shippingRegions.find((region) => region.value === activeShippingRegion) ?? shippingRegions[2];
+  const selectedRegion = shippingRegions.find((region) => region.value === activeShippingRegion) ?? shippingRegions[shippingRegions.length - 1];
   const shipping = useMemo(() => {
     if (cart.length === 0 || !addressIsValid) return 0;
-    if (activeShippingRegion === "us") return subtotal >= 90 ? 0 : 8;
-    if (activeShippingRegion === "canada") return subtotal >= 150 ? 12 : 20;
-    return 32;
+    if (activeShippingRegion === "ph") return subtotal >= 5000 ? 0 : 250;
+    if (activeShippingRegion === "us") return subtotal >= 5000 ? 0 : 800;
+    if (activeShippingRegion === "canada") return subtotal >= 7500 ? 0 : 1200;
+    return 1800;
   }, [activeShippingRegion, addressIsValid, cart.length, subtotal]);
   const estimatedTotal = subtotal + shipping;
-  const subtotalCents = Math.round(subtotal * 100);
-  const shippingCents = Math.round(shipping * 100);
-  const totalCents = Math.round(estimatedTotal * 100);
   const displayedTotal = manualOrder ? manualOrder.total_cents / 100 : estimatedTotal;
+  const unavailableLines = cart.filter((line) => !products.some((product) => product.id === line.id));
+  const hasUnavailableLines = unavailableLines.length > 0;
+  const exchangeRatePending = currency !== "PHP" && !rateReady;
+  const checkoutBlocked = hasUnavailableLines || exchangeRatePending;
 
   const handleAddressChange = (nextAddress: DeliveryAddress) => {
     setDeliveryAddress(nextAddress);
@@ -134,6 +140,16 @@ export default function CartDrawer() {
 
     if (cart.length === 0) return;
 
+    if (hasUnavailableLines) {
+      toast.error("Remove unavailable items first.", { description: "A part in your build was archived or removed from the catalog." });
+      return;
+    }
+
+    if (exchangeRatePending) {
+      toast.error("Exchange rate is still loading.", { description: "Wait a moment, or switch back to PHP to continue." });
+      return;
+    }
+
     const address = normalizeDeliveryAddress(addressMode === "saved" ? normalizedSavedAddress : deliveryAddress);
     if (!isValidDeliveryAddress(address)) {
       setAddressError("Enter the required delivery address fields before reserving the order.");
@@ -145,7 +161,7 @@ export default function CartDrawer() {
     try {
       if (addressMode === "new" && saveAsDefault) await saveDefaultAddress(address);
 
-      const order = await createManualOrder({ cart, shippingRegion: shippingRegionForAddress(address), shippingAddress: address, shippingCents, subtotalCents, totalCents });
+      const order = await createManualOrder({ cart, shippingRegion: shippingRegionForAddress(address), shippingAddress: address, displayCurrency: currency, fxRate: rate });
       setManualOrder(order);
       setAddressError(null);
       toast.success("Order reserved.", { description: `Use ${order.order_number} as your payment note if possible.` });
@@ -176,7 +192,7 @@ export default function CartDrawer() {
   };
 
   return (
-    <div className={`fixed inset-0 z-50 ${cartOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!cartOpen}>
+    <div className={`fixed inset-0 z-50 ${cartOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!cartOpen} inert={!cartOpen}>
       <button onClick={closeCart} className={`absolute inset-0 bg-black/65 transition-opacity duration-300 ${cartOpen ? "opacity-100" : "opacity-0"}`} aria-label="Close cart" />
       <aside className={`absolute inset-y-0 right-0 flex w-full max-w-[480px] flex-col border-l border-white/10 bg-[#101113] shadow-2xl transition-transform duration-300 ${cartOpen ? "translate-x-0" : "translate-x-full"}`} aria-label="Shopping cart">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
@@ -191,7 +207,17 @@ export default function CartDrawer() {
             </div>
           ) : cart.map((line) => {
             const product = products.find((item) => item.id === line.id);
-            if (!product) return null;
+            if (!product) {
+              return (
+                <div key={`${line.id}-${line.finish}`} className="flex items-center justify-between gap-3 border-b border-white/10 py-4">
+                  <div className="min-w-0">
+                    <p className="font-display text-xl uppercase leading-none text-white/45">Unavailable part</p>
+                    <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">{line.finish} · archived from the catalog</p>
+                  </div>
+                  <button onClick={() => removeLine(line.id, line.finish)} className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-[#ff5a36] hover:text-white">Remove</button>
+                </div>
+              );
+            }
             return (
               <div key={`${line.id}-${line.finish}`} className="flex gap-3 border-b border-white/10 py-4">
                 <div className="size-20 shrink-0 overflow-hidden bg-[#1a1b1e]"><ProductVisual product={product} compact /></div>
@@ -200,7 +226,7 @@ export default function CartDrawer() {
                     <div><p className="font-display text-xl uppercase leading-none text-white">{product.name}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">{line.finish}</p></div>
                     <button onClick={() => removeLine(line.id, line.finish)} className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40 hover:text-[#ff5a36]">Remove</button>
                   </div>
-                  <div className="mt-4 flex items-center justify-between"><div className="flex items-center border border-white/15"><button onClick={() => updateQuantity(line.id, line.finish, line.quantity - 1)} className="grid size-7 place-items-center text-white/60 hover:text-white" aria-label={`Decrease ${product.name} quantity`}><Minus size={13} /></button><span className="grid w-7 place-items-center text-xs font-bold text-white">{line.quantity}</span><button onClick={() => updateQuantity(line.id, line.finish, line.quantity + 1)} className="grid size-7 place-items-center text-white/60 hover:text-white" aria-label={`Increase ${product.name} quantity`}><Plus size={13} /></button></div><span className="text-sm font-bold text-white">{money(product.price * line.quantity)}</span></div>
+                  <div className="mt-4 flex items-center justify-between"><div className="flex items-center border border-white/15"><button onClick={() => updateQuantity(line.id, line.finish, line.quantity - 1)} className="grid size-7 place-items-center text-white/60 hover:text-white" aria-label={`Decrease ${product.name} quantity`}><Minus size={13} /></button><span className="grid w-7 place-items-center text-xs font-bold text-white">{line.quantity}</span><button onClick={() => updateQuantity(line.id, line.finish, line.quantity + 1)} className="grid size-7 place-items-center text-white/60 hover:text-white" aria-label={`Increase ${product.name} quantity`}><Plus size={13} /></button></div><span className="text-sm font-bold text-white">{formatMoney(product.price * line.quantity)}</span></div>
                 </div>
               </div>
             );
@@ -242,9 +268,9 @@ export default function CartDrawer() {
           ) : null}
         </div>
         <div className="border-t border-white/10 p-5">
-          {cart.length > 0 && !manualOrder ? <div className="mb-5 border-y border-white/10 py-4"><div className="flex items-center justify-between gap-4"><div><p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.16em] text-white/60"><MapPin size={14} className="text-[#ff5a36]" />Delivery estimate</p><p className="mt-1 text-xs text-white/40">{addressIsValid ? `${selectedRegion.label} · ${selectedRegion.timing}` : "Enter a delivery address to calculate shipping."}</p></div></div><div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3"><p className="flex items-center gap-2 text-xs text-white/55"><PackageCheck size={15} className="text-[#ff5a36]" />{addressIsValid ? selectedRegion.timing : "Address needed"}</p><span className={`text-xs font-bold ${addressIsValid && shipping === 0 ? "text-[#ff5a36]" : "text-white"}`}>{!addressIsValid ? "—" : shipping === 0 ? "Shipping included" : money(shipping)}</span></div></div> : null}
-          {cart.length > 0 ? <div className="space-y-2 border-b border-white/10 pb-4"><div className="flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Parts subtotal</span><span className="text-sm font-bold text-white">{money(subtotal)}</span></div><div className="flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Estimated shipping</span><span className="text-sm font-bold text-white">{!addressIsValid ? "Address needed" : shipping === 0 ? "Included" : money(shipping)}</span></div></div> : null}
-          <div className="mb-4 mt-4 flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/65">{manualOrder ? "Order total" : "Estimated total"}</span><span className="font-display text-3xl text-white">{money(displayedTotal)}</span></div>
+          {cart.length > 0 && !manualOrder ? <div className="mb-5 border-y border-white/10 py-4"><div className="flex items-center justify-between gap-4"><div><p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.16em] text-white/60"><MapPin size={14} className="text-[#ff5a36]" />Delivery estimate</p><p className="mt-1 text-xs text-white/40">{addressIsValid ? `${selectedRegion.label} · ${selectedRegion.timing}` : "Enter a delivery address to calculate shipping."}</p></div></div><div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3"><p className="flex items-center gap-2 text-xs text-white/55"><PackageCheck size={15} className="text-[#ff5a36]" />{addressIsValid ? selectedRegion.timing : "Address needed"}</p><span className={`text-xs font-bold ${addressIsValid && shipping === 0 ? "text-[#ff5a36]" : "text-white"}`}>{!addressIsValid ? "—" : shipping === 0 ? "Shipping included" : formatMoney(shipping)}</span></div></div> : null}
+          {cart.length > 0 ? <div className="space-y-2 border-b border-white/10 pb-4"><div className="flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Parts subtotal</span><span className="text-sm font-bold text-white">{formatMoney(subtotal)}</span></div><div className="flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Estimated shipping</span><span className="text-sm font-bold text-white">{!addressIsValid ? "Address needed" : shipping === 0 ? "Included" : formatMoney(shipping)}</span></div></div> : null}
+          <div className="mb-4 mt-4 flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/65">{manualOrder ? "Order total" : "Estimated total"}</span><span className="font-display text-3xl text-white">{manualOrder ? formatMoney(manualOrder.total_cents / 100, manualOrder.display_currency, manualOrder.fx_rate) : formatMoney(displayedTotal)}</span></div>
           {manualOrder ? (
             <div className="space-y-4">
               <div className="border border-white/10 bg-[#151719] p-4">
@@ -255,7 +281,7 @@ export default function CartDrawer() {
                   </div>
                   <span className="border border-[#ff5a36]/35 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#ff5a36]">{manualOrder.status.replace("_", " ")}</span>
                 </div>
-                <p className="mt-3 text-xs leading-relaxed text-white/50">Pay the exact total, then submit the transaction reference. Screenshots help, but final verification is done against the received GCash or bank transaction.</p>
+                <p className="mt-3 text-xs leading-relaxed text-white/50">Pay the exact PHP total of <span className="font-bold text-white">{formatMoney(manualOrder.total_cents / 100, "PHP", 1)}</span>, then submit the transaction reference. The converted estimate is for display only; verification uses the PHP order total.</p>
               </div>
 
               {manualOrder.status === "pending_payment" ? (
@@ -293,7 +319,11 @@ export default function CartDrawer() {
               )}
             </div>
           ) : (
-            <button onClick={handleCreateOrder} disabled={cart.length === 0 || creatingOrder} className="w-full bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]">{creatingOrder ? "Reserving order..." : user ? "Submit order" : "Sign in to submit order"}</button>
+            <>
+              {hasUnavailableLines ? <p className="mb-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">Remove the unavailable part{unavailableLines.length > 1 ? "s" : ""} above before checking out.</p> : null}
+              {exchangeRatePending ? <p className="mb-3 border border-white/10 bg-white/[.03] p-3 text-xs leading-5 text-white/55">Updating the {currency} exchange rate. Checkout unlocks once it loads, or switch back to PHP.</p> : null}
+              <button onClick={handleCreateOrder} disabled={cart.length === 0 || creatingOrder || checkoutBlocked} className="w-full bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]">{creatingOrder ? "Reserving order..." : user ? "Submit order" : "Sign in to submit order"}</button>
+            </>
           )}
           <p className="mt-3 text-center text-[10px] leading-relaxed text-white/35">Shipping is an estimate. Orders are fulfilled after manual payment verification.</p>
         </div>

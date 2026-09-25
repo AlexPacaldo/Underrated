@@ -2,13 +2,13 @@
  * Design direction: Technical Drop Editorial — browsing is a compact equipment index with sharp filters and dense product information.
  */
 import ProductCard from "@/components/ProductCard";
-import { categories, products } from "@/data/products";
+import { useCatalog } from "@/contexts/CatalogContext";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
-const filterNames = ["All", ...categories.map((category) => category.name), "Accessories"];
-
 export default function Shop() {
+  const { products, categories } = useCatalog();
+  const filterNames = ["All", ...categories.map((category) => category.name)];
   const initialCategory = new URLSearchParams(window.location.search).get("category") ?? "All";
   const [category, setCategory] = useState(filterNames.includes(initialCategory) ? initialCategory : "All");
   const [query, setQuery] = useState("");
@@ -27,7 +27,7 @@ export default function Shop() {
       if (sort === "newest") return Number(Boolean(b.badge)) - Number(Boolean(a.badge));
       return Number(Boolean(b.featured)) - Number(Boolean(a.featured));
     });
-  }, [category, query, sort]);
+  }, [category, products, query, sort]);
 
   return (
     <section className="min-h-screen pt-[68px]">
@@ -35,7 +35,7 @@ export default function Shop() {
         <span aria-hidden="true" className="pointer-events-none absolute right-[-.08em] top-[-.25em] font-display text-[clamp(9rem,25vw,26rem)] uppercase leading-none text-white/[.025]">Index</span>
         <div className="mx-auto max-w-[1440px]">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#ff5a36]">Parts index / 2026</p>
-          <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="font-display text-6xl uppercase leading-[0.78] tracking-[-0.055em] text-white sm:text-8xl">The <em className="text-[#ff5a36]">shop</em></h1><p className="mt-5 max-w-sm text-sm leading-relaxed text-white/45">Contact points, cockpit details, and the small pieces that make a build read differently.</p></div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">06 current components</p></div>
+          <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="font-display text-6xl uppercase leading-[0.78] tracking-[-0.055em] text-white sm:text-8xl">The <em className="text-[#ff5a36]">shop</em></h1><p className="mt-5 max-w-sm text-sm leading-relaxed text-white/45">Contact points, cockpit details, and the small pieces that make a build read differently.</p></div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">{products.length.toString().padStart(2, "0")} current components</p></div>
         </div>
       </div>
 

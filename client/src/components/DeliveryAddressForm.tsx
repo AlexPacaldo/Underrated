@@ -30,7 +30,7 @@ export default function DeliveryAddressForm({ address, onChange }: DeliveryAddre
     onChange({
       ...address,
       country_code: countryCode,
-      country: countryCode === "US" ? "United States" : countryCode === "CA" ? "Canada" : "",
+      country: countryCode === "PH" ? "Philippines" : countryCode === "US" ? "United States" : countryCode === "CA" ? "Canada" : "",
     });
   };
 
@@ -66,6 +66,7 @@ export default function DeliveryAddressForm({ address, onChange }: DeliveryAddre
           <Select value={address.country_code} onValueChange={updateCountryCode}>
             <SelectTrigger className="h-10 w-full rounded-none border-white/15 bg-[#101113] text-sm text-white"><SelectValue placeholder="Select country" /></SelectTrigger>
             <SelectContent className="rounded-none border-white/15 bg-[#151719] text-white">
+              <SelectItem value="PH" className="focus:bg-[#ff5a36] focus:text-black">Philippines</SelectItem>
               <SelectItem value="US" className="focus:bg-[#ff5a36] focus:text-black">United States</SelectItem>
               <SelectItem value="CA" className="focus:bg-[#ff5a36] focus:text-black">Canada</SelectItem>
               <SelectItem value="OTHER" className="focus:bg-[#ff5a36] focus:text-black">Another country</SelectItem>
