@@ -28,7 +28,7 @@ export default function Home() {
   return (
     <>
       <section className="relative min-h-[790px] overflow-hidden bg-[#090a0b] pt-[68px] sm:min-h-[850px]">
-        <img src="/manus-storage/underrated-hero-hoods_6f8378ef.jpg" alt="Matte-black road bike brake hoods on a dark studio set" className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
+        <img src="/brand/HeroBanner.png" alt="Matte-black road bike brake hoods on a dark studio set" className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,4,4,.95)_0%,rgba(3,4,4,.72)_34%,rgba(3,4,4,.22)_65%,rgba(3,4,4,.25)_100%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(3,4,4,.7)_0%,transparent_32%)]" />
         <div className="relative mx-auto flex min-h-[722px] max-w-[1440px] flex-col justify-end px-4 pb-8 pt-20 sm:px-6 sm:pb-10 lg:min-h-[782px] lg:px-9">
