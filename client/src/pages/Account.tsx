@@ -1,6 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { money } from "@/data/products";
 import { fetchAccountOrders, type AccountOrder } from "@/lib/accountOrders";
+import { formatDeliveryAddress } from "@/lib/deliveryAddress";
 import { ArrowRight, Clock3, LogIn, PackageCheck, ReceiptText, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
@@ -22,19 +23,39 @@ export default function Account() {
   const [orders, setOrders] = useState<AccountOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const defaultAddress = profile && user && profile.id === user.id ? profile.default_shipping_address : null;
 
   useEffect(() => {
-    if (!user || !isConfigured) return;
+    let active = true;
+    setOrders([]);
+    setOrdersError(null);
+
+    if (!user || !isConfigured) {
+      setOrdersLoading(false);
+      return () => {
+        active = false;
+      };
+    }
 
     setOrdersLoading(true);
     fetchAccountOrders()
       .then((data) => {
+        if (!active) return;
         setOrders(data);
         setOrdersError(null);
       })
-      .catch((error) => setOrdersError(error instanceof Error ? error.message : "Could not load orders."))
-      .finally(() => setOrdersLoading(false));
-  }, [isConfigured, user]);
+      .catch((error) => {
+        if (!active) return;
+        setOrdersError(error instanceof Error ? error.message : "Could not load orders.");
+      })
+      .finally(() => {
+        if (active) setOrdersLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isConfigured, user?.id]);
 
   if (!loading && !user) {
     return (
@@ -77,6 +98,17 @@ export default function Account() {
             <p className="flex gap-3 text-sm leading-6 text-white/50"><Clock3 size={17} className="mt-0.5 shrink-0 text-[#ff5a36]" />Pay through GCash QR or bank transfer.</p>
             <p className="flex gap-3 text-sm leading-6 text-white/50"><PackageCheck size={17} className="mt-0.5 shrink-0 text-[#ff5a36]" />Send the reference number, then wait for manual verification.</p>
           </div>
+          <div className="mt-6 border border-white/10 bg-[#0c0d0e] p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/45">Default delivery address</p>
+            {defaultAddress ? (
+              <>
+                <p className="mt-3 text-sm font-bold text-white">{defaultAddress.recipient_name}</p>
+                <p className="mt-1 text-xs leading-5 text-white/50">{formatDeliveryAddress(defaultAddress)}</p>
+                <p className="mt-1 text-xs text-white/40">{defaultAddress.phone}</p>
+                {defaultAddress.delivery_instructions ? <p className="mt-1 text-xs leading-5 text-white/40">Note: {defaultAddress.delivery_instructions}</p> : null}
+              </>
+            ) : <p className="mt-3 text-xs leading-5 text-white/45">No address saved yet. We’ll ask for one during checkout.</p>}
+          </div>
         </aside>
 
         <div className="min-h-96 border-t border-white/15">
@@ -107,6 +139,8 @@ export default function Account() {
                     <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#ff5a36]">{statusLabels[order.status]}</p>
                   </div>
                 </div>
+
+                {order.shipping_address ? <div className="mt-4 border border-white/10 bg-white/[.02] p-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/40">Delivering to</p><p className="mt-2 text-xs font-bold text-white">{order.shipping_address.recipient_name}</p><p className="mt-1 text-xs leading-5 text-white/50">{formatDeliveryAddress(order.shipping_address)}</p><p className="mt-1 text-xs text-white/40">{order.shipping_address.phone}</p>{order.shipping_address.delivery_instructions ? <p className="mt-1 text-xs leading-5 text-white/40">Note: {order.shipping_address.delivery_instructions}</p> : null}</div> : null}
 
                 <div className="mt-4 grid gap-2">
                   {order.order_items.map((item) => (

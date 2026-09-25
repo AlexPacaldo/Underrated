@@ -1,5 +1,6 @@
 import type { CartLine } from "@/contexts/StoreContext";
 import { products } from "@/data/products";
+import type { DeliveryAddress, ShippingRegion } from "@/lib/deliveryAddress";
 import { supabase } from "@/lib/supabase";
 
 export type ManualPaymentMethod = "gcash_qr" | "bank_transfer";
@@ -9,11 +10,13 @@ export type ManualOrder = {
   order_number: string;
   status: "pending_payment" | "payment_submitted" | "paid" | "rejected" | "cancelled";
   total_cents: number;
+  shipping_address: DeliveryAddress | null;
 };
 
 type CreateManualOrderInput = {
   cart: CartLine[];
-  shippingRegion: string;
+  shippingRegion: ShippingRegion;
+  shippingAddress: DeliveryAddress;
   shippingCents: number;
   subtotalCents: number;
   totalCents: number;
@@ -26,12 +29,13 @@ export async function createManualOrder(input: CreateManualOrderInput) {
     .from("orders")
     .insert({
       shipping_region: input.shippingRegion,
+      shipping_address: input.shippingAddress,
       subtotal_cents: input.subtotalCents,
       shipping_cents: input.shippingCents,
       total_cents: input.totalCents,
       status: "pending_payment",
     })
-    .select("id,order_number,status,total_cents")
+    .select("id,order_number,status,total_cents,shipping_address")
     .single();
 
   if (error) throw error;
@@ -73,7 +77,7 @@ export async function submitManualPayment(orderId: string, paymentMethod: Manual
     .from("orders")
     .update({ status: "payment_submitted" })
     .eq("id", orderId)
-    .select("id,order_number,status,total_cents")
+    .select("id,order_number,status,total_cents,shipping_address")
     .single();
 
   if (error) throw error;

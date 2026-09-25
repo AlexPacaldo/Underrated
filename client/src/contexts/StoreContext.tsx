@@ -25,6 +25,30 @@ const StoreContext = createContext<StoreContextValue | undefined>(undefined);
 const LEGACY_CART_KEY = "underrated-cart";
 const GUEST_CART_KEY = "underrated-cart:guest";
 
+function mergeCartLines(...carts: CartLine[][]) {
+  const merged = new Map<string, CartLine>();
+  for (const cart of carts) {
+    for (const line of cart) {
+      if (!line.id || !line.finish || line.quantity <= 0) continue;
+      const key = `${line.id}-${line.finish}`;
+      const existing = merged.get(key);
+      merged.set(key, existing ? { ...existing, quantity: existing.quantity + line.quantity } : line);
+    }
+  }
+  return Array.from(merged.values());
+}
+
+function readCart(storageKey: string) {
+  const stored = window.localStorage.getItem(storageKey) ?? window.sessionStorage.getItem(storageKey);
+  if (!stored) return [] as CartLine[];
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? (parsed as CartLine[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -35,17 +59,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (authLoading) return;
 
-    const stored = window.localStorage.getItem(cartStorageKey) ?? window.sessionStorage.getItem(cartStorageKey);
-    const legacyGuestCart = !user ? window.sessionStorage.getItem(LEGACY_CART_KEY) : null;
+    if (user) {
+      const userCart = readCart(cartStorageKey);
+      const guestCart = readCart(GUEST_CART_KEY);
+      const mergedCart = mergeCartLines(userCart, guestCart);
+      setCart(mergedCart);
 
-    try {
-      setCart(stored || legacyGuestCart ? JSON.parse(stored ?? legacyGuestCart ?? "[]") : []);
-    } catch {
-      setCart([]);
+      if (guestCart.length > 0) {
+        window.localStorage.setItem(cartStorageKey, JSON.stringify(mergedCart));
+        window.localStorage.removeItem(GUEST_CART_KEY);
+        window.sessionStorage.removeItem(GUEST_CART_KEY);
+      }
+
+      setLoadedCartKey(cartStorageKey);
+      return;
     }
 
-    if (legacyGuestCart && !window.localStorage.getItem(GUEST_CART_KEY)) {
-      window.localStorage.setItem(GUEST_CART_KEY, legacyGuestCart);
+    const guestCart = readCart(GUEST_CART_KEY);
+    const legacyGuestCart = readCart(LEGACY_CART_KEY);
+    setCart(guestCart.length > 0 ? guestCart : legacyGuestCart);
+
+    if (legacyGuestCart.length > 0 && guestCart.length === 0) {
+      window.localStorage.setItem(GUEST_CART_KEY, JSON.stringify(legacyGuestCart));
       window.sessionStorage.removeItem(LEGACY_CART_KEY);
     }
 

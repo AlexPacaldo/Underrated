@@ -1,3 +1,4 @@
+import type { DeliveryAddress } from "@/lib/deliveryAddress";
 import { supabase } from "@/lib/supabase";
 
 export type AccountOrderItem = {
@@ -20,6 +21,7 @@ export type AccountOrder = {
   order_number: string;
   status: "pending_payment" | "payment_submitted" | "paid" | "rejected" | "cancelled";
   total_cents: number;
+  shipping_address: DeliveryAddress | null;
   created_at: string;
   order_items: AccountOrderItem[];
   manual_payment_submissions: AccountPaymentSubmission[];
@@ -31,7 +33,7 @@ export async function fetchAccountOrders() {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id,order_number,status,total_cents,created_at,order_items(id,product_name,finish,quantity,line_total_cents),manual_payment_submissions(id,payment_method,reference_number,created_at)",
+      "id,order_number,status,total_cents,shipping_address,created_at,order_items(id,product_name,finish,quantity,line_total_cents),manual_payment_submissions(id,payment_method,reference_number,created_at)",
     )
     .order("created_at", { ascending: false });
 
