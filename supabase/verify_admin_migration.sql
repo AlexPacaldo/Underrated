@@ -60,6 +60,15 @@ with checks as (
            )
          ) = 6 then 'ok' else 'MISSING' end
   union all
+  select 'order status rpc preserves notes',
+         case when (
+           select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname = 'admin_update_order_status'
+             and pg_get_functiondef(p.oid) like '%then order_fulfillment.tracking_number%'
+             and pg_get_functiondef(p.oid) like '%then order_fulfillment.fulfillment_note%'
+             and pg_get_functiondef(p.oid) like '%then order_fulfillment.admin_note%'
+         ) = 1 then 'ok' else 'REGRESSED' end
+  union all
   select 'storefront-assets bucket',
          case when (select count(*) from storage.buckets where id = 'storefront-assets') = 1 then 'ok' else 'MISSING' end
   union all
