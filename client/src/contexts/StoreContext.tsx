@@ -1,6 +1,7 @@
 /**
- * Design direction: Technical Drop Editorial — the cart stays direct and machine-like, with no hidden commerce complexity.
+ * Design direction: Technical Drop Editorial - the cart stays direct and machine-like, with no hidden commerce complexity.
  */
+import { useAuth } from "@/contexts/AuthContext";
 import { products } from "@/data/products";
 import type { Product } from "@/data/products";
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
@@ -21,19 +22,40 @@ type StoreContextValue = {
 };
 
 const StoreContext = createContext<StoreContextValue | undefined>(undefined);
+const LEGACY_CART_KEY = "underrated-cart";
+const GUEST_CART_KEY = "underrated-cart:guest";
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [loadedCartKey, setLoadedCartKey] = useState<string | null>(null);
+  const cartStorageKey = user ? `underrated-cart:user:${user.id}` : GUEST_CART_KEY;
 
   useEffect(() => {
-    const stored = window.sessionStorage.getItem("underrated-cart");
-    if (stored) setCart(JSON.parse(stored));
-  }, []);
+    if (authLoading) return;
+
+    const stored = window.localStorage.getItem(cartStorageKey) ?? window.sessionStorage.getItem(cartStorageKey);
+    const legacyGuestCart = !user ? window.sessionStorage.getItem(LEGACY_CART_KEY) : null;
+
+    try {
+      setCart(stored || legacyGuestCart ? JSON.parse(stored ?? legacyGuestCart ?? "[]") : []);
+    } catch {
+      setCart([]);
+    }
+
+    if (legacyGuestCart && !window.localStorage.getItem(GUEST_CART_KEY)) {
+      window.localStorage.setItem(GUEST_CART_KEY, legacyGuestCart);
+      window.sessionStorage.removeItem(LEGACY_CART_KEY);
+    }
+
+    setLoadedCartKey(cartStorageKey);
+  }, [authLoading, cartStorageKey, user]);
 
   useEffect(() => {
-    window.sessionStorage.setItem("underrated-cart", JSON.stringify(cart));
-  }, [cart]);
+    if (authLoading || loadedCartKey !== cartStorageKey) return;
+    window.localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+  }, [authLoading, cart, cartStorageKey, loadedCartKey]);
 
   const value = useMemo<StoreContextValue>(() => {
     const totalItems = cart.reduce((count, line) => count + line.quantity, 0);
