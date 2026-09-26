@@ -32,6 +32,8 @@ export function mapProduct(value: unknown): Product {
   const rawFitment = asRecord(row.fitment);
   const compatibility = Array.isArray(rawFitment.compatibility) ? rawFitment.compatibility.filter((item): item is string => typeof item === "string") : [];
   const image = typeof row.image_path === "string" && row.image_path.trim() ? row.image_path : undefined;
+  const rawImages = Array.isArray(row.images) ? row.images.filter((item): item is string => typeof item === "string") : [];
+  const images = rawImages.map((item) => item.trim()).filter((item) => item && item !== image);
   const priceCents = Number(row.price_php_cents ?? 0);
 
   return {
@@ -45,6 +47,7 @@ export function mapProduct(value: unknown): Product {
     description: String(row.description ?? ""),
     finishes: rawFinishes,
     image,
+    images,
     visual,
     specs,
     fitment: {
@@ -121,7 +124,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     requestId.current = currentRequest;
     setLoading(true);
     const [productResult, homepageResult] = await Promise.all([
-      supabase.from("products").select("id,slug,name,category,price_php_cents,badge,descriptor,description,finishes,image_path,visual,specs,fitment,featured,archived,sort_order").eq("archived", false).order("sort_order", { ascending: true }),
+      supabase.from("products").select("id,slug,name,category,price_php_cents,badge,descriptor,description,finishes,image_path,images,visual,specs,fitment,featured,archived,sort_order").eq("archived", false).order("sort_order", { ascending: true }),
       supabase.from("homepage_content").select("*").eq("id", "primary").maybeSingle(),
     ]);
 

@@ -11,6 +11,8 @@ export type Product = {
   description: string;
   finishes: string[];
   image?: string;
+  /** Extra photos beyond the primary image, in gallery order. */
+  images?: string[];
   visual: ProductVisual;
   specs: { label: string; value: string }[];
   fitment: {

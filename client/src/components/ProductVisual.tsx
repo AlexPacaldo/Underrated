@@ -3,9 +3,11 @@
  */
 import type { Product } from "@/data/products";
 
-export default function ProductVisual({ product, compact = false }: { product: Product; compact?: boolean }) {
-  if (product.image) {
-    return <img src={product.image} alt={product.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]" />;
+export default function ProductVisual({ product, compact = false, src }: { product: Product; compact?: boolean; src?: string }) {
+  const image = src ?? product.image;
+
+  if (image) {
+    return <img src={image} alt={product.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]" />;
   }
 
   return (

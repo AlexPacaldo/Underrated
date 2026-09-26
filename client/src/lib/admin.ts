@@ -87,6 +87,7 @@ export async function fetchAdminProducts() {
 
 export async function saveAdminProduct(product: Product) {
   if (!supabase) throw new Error("Supabase is not configured.");
+  const image = product.image?.trim() || null;
   const { data, error } = await supabase.from("products").upsert({
     id: product.id,
     slug: product.slug.trim(),
@@ -97,7 +98,8 @@ export async function saveAdminProduct(product: Product) {
     descriptor: product.descriptor.trim(),
     description: product.description.trim(),
     finishes: product.finishes,
-    image_path: product.image?.trim() || null,
+    image_path: image,
+    images: (product.images ?? []).map((item) => item.trim()).filter((item) => item && item !== image),
     visual: product.visual,
     specs: product.specs,
     fitment: product.fitment,

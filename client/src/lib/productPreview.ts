@@ -8,6 +8,17 @@ export const productPreviewPath = "/admin/product-preview";
 export const productPreviewProductMessage = "product-preview:product";
 export const productPreviewReadyMessage = "product-preview:ready";
 export const productPreviewMetricsMessage = "product-preview:metrics";
+export const productPreviewSelectMessage = "product-preview:select";
+
+/** Every part of the item view an editor can jump to from the preview frame. */
+export const productPreviewFields = ["name", "category", "price", "badge", "image", "descriptor", "description", "finishes", "specs", "fitment"] as const;
+
+export type ProductPreviewField = typeof productPreviewFields[number];
+
+export type ProductPreviewMode = {
+  active: ProductPreviewField | null;
+  onSelect: (field: ProductPreviewField) => void;
+};
 
 const visuals: ProductVisual[] = ["hoods", "valve", "saddle", "tape", "stem", "stand"];
 
@@ -28,6 +39,16 @@ function list(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function imageList(value: unknown) {
+  return list(value).map((item) => item.trim()).filter(Boolean);
+}
+
+export function readPreviewField(data: unknown): ProductPreviewField | null {
+  const payload = asRecord(data);
+  if (payload.type !== productPreviewSelectMessage) return null;
+  return productPreviewFields.includes(payload.field as ProductPreviewField) ? (payload.field as ProductPreviewField) : null;
+}
+
 export function readPreviewProduct(data: unknown): Product | null {
   const payload = asRecord(data);
   if (payload.type !== productPreviewProductMessage) return null;
@@ -36,6 +57,8 @@ export function readPreviewProduct(data: unknown): Product | null {
   const specs = Array.isArray(row.specs) ? row.specs.flatMap((item) => { const spec = asRecord(item); return typeof spec.label === "string" && typeof spec.value === "string" ? [{ label: spec.label, value: spec.value }] : []; }) : [];
   const rawFitment = asRecord(row.fitment);
   const price = Number(row.price);
+  const image = typeof row.image === "string" && row.image.trim() ? row.image : undefined;
+  const images = imageList(row.images);
   return {
     id: text(row.id, "draft"),
     slug: text(row.slug, ""),
@@ -46,7 +69,8 @@ export function readPreviewProduct(data: unknown): Product | null {
     descriptor: text(row.descriptor, ""),
     description: text(row.description, ""),
     finishes: list(row.finishes),
-    image: typeof row.image === "string" && row.image.trim() ? row.image : undefined,
+    image,
+    images: images.filter((item) => item !== image),
     visual,
     specs,
     fitment: { headline: text(rawFitment.headline, ""), compatibility: list(rawFitment.compatibility), checkBeforeRide: text(rawFitment.checkBeforeRide, "") },

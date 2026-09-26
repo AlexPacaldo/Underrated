@@ -49,7 +49,21 @@ with checks as (
                'journal_post_two_image_path','journal_post_two_label','journal_post_two_place',
                'journal_post_three_image_path','journal_post_three_label','journal_post_three_place'
              )
-         ) = 13 then 'ok' else 'MISSING' end
+          ) = 13 then 'ok' else 'MISSING' end
+  union all
+  select 'products gallery images column',
+         case when (
+           select count(*) from information_schema.columns
+           where table_schema = 'public' and table_name = 'products'
+             and column_name = 'images'
+             and data_type = 'jsonb'
+         ) = 1 then 'ok' else 'MISSING' end
+  union all
+  select 'products images is always an array',
+         case when (
+           select count(*) from public.products
+           where jsonb_typeof(images) <> 'array'
+         ) = 0 then 'ok' else 'BAD ROWS' end
   union all
   select 'address check constraints',
          case when (

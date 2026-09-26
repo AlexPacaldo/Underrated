@@ -4,8 +4,8 @@
 import ProductCard from "@/components/ProductCard";
 import ProductDetailView from "@/components/ProductDetailView";
 import type { Product } from "@/data/products";
-import { postToParent, productPreviewMetricsMessage, productPreviewProductMessage, productPreviewReadyMessage, readPreviewProduct } from "@/lib/productPreview";
-import { useEffect, useState } from "react";
+import { postToParent, productPreviewMetricsMessage, productPreviewProductMessage, productPreviewReadyMessage, productPreviewSelectMessage, readPreviewProduct, type ProductPreviewField } from "@/lib/productPreview";
+import { useCallback, useEffect, useState } from "react";
 
 const emptyDraft: Product = {
   id: "draft",
@@ -16,6 +16,7 @@ const emptyDraft: Product = {
   descriptor: "",
   description: "",
   finishes: ["Graphite"],
+  images: [],
   visual: "hoods",
   specs: [],
   fitment: { headline: "", compatibility: [], checkBeforeRide: "" },
@@ -26,6 +27,12 @@ const emptyDraft: Product = {
 
 export default function ProductPreview() {
   const [product, setProduct] = useState<Product>(emptyDraft);
+  const [field, setField] = useState<ProductPreviewField | null>(null);
+
+  const select = useCallback((next: ProductPreviewField) => {
+    setField(next);
+    postToParent({ type: productPreviewSelectMessage, field: next });
+  }, []);
 
   useEffect(() => {
     document.documentElement.style.overflow = "hidden";
@@ -36,7 +43,11 @@ export default function ProductPreview() {
       const next = readPreviewProduct(event.data);
       if (next) setProduct(next);
     };
+    // Outlined fields handle their own clicks, so only everything else is swallowed:
+    // that keeps the storefront chrome, the cart button and the back link inert.
     const swallowClicks = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-product-field]")) return;
       event.preventDefault();
       event.stopPropagation();
     };
@@ -65,10 +76,10 @@ export default function ProductPreview() {
       <div className="mx-auto max-w-[1440px]">
         <p className="text-[10px] font-black uppercase tracking-[.16em] text-white/35">Shop card / how it sits in the index</p>
         <div className="mt-4 grid gap-x-4 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="max-w-[300px]"><ProductCard product={product} /></div>
+          <div className="max-w-[300px]"><ProductCard product={product} preview={{ active: field, onSelect: select }} /></div>
         </div>
       </div>
     </section>
-    <ProductDetailView product={product} topOffset={false} backHref="/shop" backLabel="Back to index" />
+    <ProductDetailView product={product} preview={{ active: field, onSelect: select }} topOffset={false} backHref="/shop" backLabel="Back to index" />
   </div>;
 }
