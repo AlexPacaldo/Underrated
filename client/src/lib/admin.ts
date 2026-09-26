@@ -115,6 +115,12 @@ export async function setAdminProductArchived(productId: string, archived: boole
   if (error) throw error;
 }
 
+export async function setAdminProductFeatured(productId: string, featured: boolean) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase.from("products").update({ featured }).eq("id", productId);
+  if (error) throw error;
+}
+
 export async function fetchAdminHomepage() {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.from("homepage_content").select("*").eq("id", "primary").maybeSingle();

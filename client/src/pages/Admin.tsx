@@ -8,8 +8,8 @@ import { useCurrency } from "@/contexts/CurrencyContext";
 import type { Product, ProductVisual } from "@/data/products";
 import { defaultHomepageContent, type HomepageContent, type HomepageSectionId } from "@/data/storefront";
 import { formatDeliveryAddress } from "@/lib/deliveryAddress";
-import { homepagePreviewPath, isPreviewType, isSameOriginMessage, previewContentMessage, previewReadyMessage, readPreviewMetrics, readPreviewSection, type HomepagePreviewMetrics } from "@/lib/homepagePreview";
-import { fetchAdminHomepage, fetchAdminOrders, fetchAdminProducts, fetchAdminProfiles, saveAdminHomepage, saveAdminProduct, setAdminProductArchived, setAdminProfileRole, updateAdminOrderStatus, uploadStorefrontAsset, type AdminOrder, type AdminOrderStatus, type AdminProfile } from "@/lib/admin";
+import { homepagePreviewPath, isPreviewType, isSameOriginMessage, previewContentMessage, previewReadyMessage, previewRefreshMessage, readPreviewMetrics, readPreviewSection, type HomepagePreviewMetrics } from "@/lib/homepagePreview";
+import { fetchAdminHomepage, fetchAdminOrders, fetchAdminProducts, fetchAdminProfiles, saveAdminHomepage, saveAdminProduct, setAdminProductArchived, setAdminProductFeatured, setAdminProfileRole, updateAdminOrderStatus, uploadStorefrontAsset, type AdminOrder, type AdminOrderStatus, type AdminProfile } from "@/lib/admin";
 
 type Section = "overview" | "orders" | "products" | "homepage" | "roles";
 
@@ -196,7 +196,15 @@ type HomepageField = {
   upload?: boolean;
 };
 
-const homepageSections: { id: HomepageSectionId; label: string; summary: string; fields: HomepageField[] }[] = [
+type HomepageSection = {
+  id: HomepageSectionId;
+  label: string;
+  summary: string;
+  fields: HomepageField[];
+  picksProducts?: boolean;
+};
+
+const homepageSections: HomepageSection[] = [
   { id: "hero", label: "Hero", summary: "The full-bleed opening frame and the oversized display type that sits on top of it.", fields: [
     { key: "hero_kicker", label: "Kicker" },
     { key: "hero_title", label: "Title / first line" },
@@ -206,7 +214,7 @@ const homepageSections: { id: HomepageSectionId; label: string; summary: string;
     { key: "hero_image_path", label: "Image URL", upload: true },
     { key: "hero_alt", label: "Image alt text", hint: "For screen readers" },
   ] },
-  { id: "drop", label: "Drop", summary: "The heading that introduces the highlighted shop items further down the page.", fields: [
+  { id: "drop", label: "Drop", summary: "The heading that introduces the highlighted shop items further down the page, and the items themselves.", picksProducts: true, fields: [
     { key: "drop_label", label: "Label" },
     { key: "drop_title", label: "Title" },
     { key: "drop_accent", label: "Accent", hint: "Signal tangerine" },
@@ -219,6 +227,21 @@ const homepageSections: { id: HomepageSectionId; label: string; summary: string;
     { key: "story_image_path", label: "Image URL", upload: true },
     { key: "story_alt", label: "Image alt text", hint: "For screen readers" },
   ] },
+  { id: "journal", label: "Journal", summary: "The “Notes from the bench” heading and the three cards beneath it. The middle card sits lower on purpose.", fields: [
+    { key: "journal_label", label: "Label" },
+    { key: "journal_title", label: "Title" },
+    { key: "journal_accent", label: "Accent", hint: "Signal tangerine" },
+    { key: "journal_description", label: "Intro paragraph", rows: 3 },
+    { key: "journal_post_one_image_path", label: "Card 1 / image URL", upload: true },
+    { key: "journal_post_one_label", label: "Card 1 / heading" },
+    { key: "journal_post_one_place", label: "Card 1 / caption" },
+    { key: "journal_post_two_image_path", label: "Card 2 / image URL", upload: true },
+    { key: "journal_post_two_label", label: "Card 2 / heading" },
+    { key: "journal_post_two_place", label: "Card 2 / caption" },
+    { key: "journal_post_three_image_path", label: "Card 3 / image URL", upload: true },
+    { key: "journal_post_three_label", label: "Card 3 / heading" },
+    { key: "journal_post_three_place", label: "Card 3 / caption" },
+  ] },
 ];
 
 const previewDevices = [
@@ -228,12 +251,13 @@ const previewDevices = [
   { id: "phone", label: "Phone", width: 390 },
 ];
 
-function HomepageEditor({ initial, reload, notify }: { initial: HomepageContent; reload: () => Promise<void>; notify: () => Promise<void> }) {
+function HomepageEditor({ initial, products, reload, notify }: { initial: HomepageContent; products: Product[]; reload: () => Promise<void>; notify: () => Promise<void> }) {
   const [content, setContent] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [section, setSection] = useState<HomepageSectionId>("hero");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pendingProduct, setPendingProduct] = useState<string | null>(null);
   const [device, setDevice] = useState(previewDevices[0]);
   const [stageWidth, setStageWidth] = useState(0);
   const [metrics, setMetrics] = useState<HomepagePreviewMetrics>({ height: 3400, offsets: {} });
@@ -247,6 +271,8 @@ function HomepageEditor({ initial, reload, notify }: { initial: HomepageContent;
   useEffect(() => { if (dirtyRef.current) return; setContent(initial); setSaved(initial); }, [initial]);
 
   const active = homepageSections.find((item) => item.id === section) ?? homepageSections[0];
+  const selectable = useMemo(() => products.filter((product) => !product.archived), [products]);
+  const inDrop = selectable.filter((product) => product.featured).length;
   const scale = stageWidth > 0 ? Math.min(1, stageWidth / device.width) : 1;
 
   const pushDraft = useCallback(() => {
@@ -298,6 +324,20 @@ function HomepageEditor({ initial, reload, notify }: { initial: HomepageContent;
     }
   };
 
+  const toggleDropItem = async (product: Product) => {
+    setPendingProduct(product.id);
+    try {
+      await setAdminProductFeatured(product.id, !product.featured);
+      await reload();
+      await notify();
+      frameRef.current?.contentWindow?.postMessage({ type: previewRefreshMessage }, window.location.origin);
+    } catch (error) {
+      toast.error("Could not update the drop.", { description: error instanceof Error ? error.message : "Try again." });
+    } finally {
+      setPendingProduct(null);
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -337,6 +377,15 @@ function HomepageEditor({ initial, reload, notify }: { initial: HomepageContent;
         <div className="flex border-b border-white/15">{homepageSections.map((item) => <button key={item.id} onClick={() => setSection(item.id)} className={`flex-1 border-r border-white/15 px-2 py-3 text-[10px] font-black uppercase tracking-[.12em] transition last:border-r-0 ${section === item.id ? "bg-[#ff5a36] text-black" : "text-white/50 hover:text-white"}`}>{item.label}</button>)}</div>
         <div className="p-5">
           <p className="text-xs leading-5 text-white/45">{active.summary}</p>
+          {active.picksProducts ? <div className="mt-5 border-t border-white/10 pt-5">
+            <div className="flex items-baseline justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/45">Shop items in this section</p><span className={`text-[10px] font-black uppercase tracking-[.14em] ${inDrop === 0 ? "text-[#ff5a36]" : "text-white/30"}`}>{inDrop} selected</span></div>
+            <div className="mt-3 divide-y divide-white/10 border-y border-white/10">{selectable.map((product) => { const on = Boolean(product.featured); return <button key={product.id} onClick={() => void toggleDropItem(product)} disabled={pendingProduct !== null} className="flex w-full items-center gap-3 py-2.5 text-left transition hover:bg-white/[.03] disabled:opacity-50">
+              <span className={`grid size-4 shrink-0 place-items-center border ${on ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/30 text-transparent"}`}><Check size={12} strokeWidth={3} /></span>
+              <span className="min-w-0 flex-1"><span className={`block truncate text-sm font-bold ${on ? "text-white" : "text-white/60"}`}>{product.name}</span><span className="mt-0.5 block truncate text-[10px] font-bold uppercase tracking-[.14em] text-white/30">{product.category}</span></span>
+              {pendingProduct === product.id ? <span className="shrink-0 text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Saving</span> : <span className="shrink-0 text-xs font-bold text-white/45">₱{product.price.toLocaleString("en-PH")}</span>}
+            </button>; })}</div>
+            <p className="mt-3 text-[10px] leading-4 text-white/35">Ticks save straight to the catalog and show up in the preview at once, no need to save the homepage. The grid runs four across, so a fifth item wraps onto a new row. Archived items are hidden.</p>
+          </div> : null}
           <div className="mt-5 grid gap-4">{active.fields.map((field) => <label key={field.key} className={labelClass}>
             <span className="flex items-baseline justify-between gap-3">{field.label}{field.hint ? <span className="text-[9px] font-bold normal-case tracking-normal text-white/25">{field.hint}</span> : null}</span>
             {field.rows ? <textarea rows={field.rows} value={content[field.key]} onChange={(event) => update(field.key, event.target.value)} className={`${inputClass} py-3`} /> : <input value={content[field.key]} onChange={(event) => update(field.key, event.target.value)} className={inputClass} />}
@@ -407,5 +456,5 @@ export default function Admin() {
   if (loading) return <section className="flex min-h-screen items-center justify-center bg-[#0c0d0e] pt-[68px] text-sm text-white/50">Loading administration...</section>;
   if (!user || profile?.role !== "admin") return <section className="flex min-h-screen items-end bg-[#0c0d0e] px-4 pb-16 pt-28 sm:px-6 lg:px-9"><div><p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.16em] text-[#ff5a36]"><ShieldCheck size={14} />Restricted area</p><h1 className="mt-5 font-display text-7xl uppercase leading-[.72] text-white">Admin<br />access.</h1><p className="mt-5 max-w-sm text-sm leading-6 text-white/45">Sign in with an account assigned the administrator role.</p><Link href="/account" className="mt-7 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[.16em] text-[#ff5a36]"><ArrowLeft size={14} />Back to account</Link></div></section>;
 
-  return <section className="min-h-screen bg-[#0c0d0e] pt-[68px]"><div className="border-b border-white/15 bg-[#101113] px-4 py-10 sm:px-6 lg:px-9"><div className="mx-auto flex max-w-[1440px] flex-col justify-between gap-6 lg:flex-row lg:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#ff5a36]">Underrated control room</p><h1 className="mt-3 font-display text-6xl uppercase leading-[.75] tracking-[-.05em] text-white sm:text-8xl">Store<br /><em className="text-[#ff5a36]">admin.</em></h1></div><div className="flex items-center gap-3 border border-white/15 px-4 py-3"><ShieldCheck size={16} className="text-[#ff5a36]" /><div><p className="text-xs font-bold text-white">{profile.full_name || user.email}</p><p className="mt-1 text-[10px] font-black uppercase tracking-[.14em] text-white/40">Administrator</p></div></div></div></div><div className="mx-auto grid max-w-[1440px] gap-6 px-4 py-7 sm:px-6 lg:grid-cols-[220px_1fr] lg:px-9"><aside className="flex gap-2 overflow-x-auto lg:block lg:space-y-1">{navigation.map((item) => <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-3 border px-3 py-3 text-left text-[10px] font-black uppercase tracking-[.14em] transition lg:w-full ${section === item.id ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/10 text-white/50 hover:border-white/30 hover:text-white"}`}><item.icon size={15} />{item.label}</button>)}</aside><main className="min-w-0">{dataError ? <p className="mb-5 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-4 text-sm text-[#ff5a36]">{dataError}. Apply the latest Supabase migrations before using administration.</p> : null}{loadingData ? <p className="mb-5 text-sm text-white/45">Refreshing administration data...</p> : null}{section === "overview" ? <div className="space-y-6"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">At a glance</p><h2 className="mt-1 font-display text-5xl uppercase text-white">Control room</h2></div><div className="grid gap-4 sm:grid-cols-3"><div className="border border-white/15 bg-[#111214] p-5"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Payment review</p><p className="mt-3 font-display text-6xl text-white">{counts.open.toString().padStart(2, "0")}</p><p className="mt-2 text-xs text-white/40">orders waiting</p></div><div className="border border-white/15 bg-[#111214] p-5"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Fulfillment</p><p className="mt-3 font-display text-6xl text-white">{counts.fulfillment.toString().padStart(2, "0")}</p><p className="mt-2 text-xs text-white/40">active orders</p></div><div className="border border-white/15 bg-[#111214] p-5"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Published catalog</p><p className="mt-3 font-display text-6xl text-white">{counts.published.toString().padStart(2, "0")}</p><p className="mt-2 text-xs text-white/40">live items</p></div></div><div className="border border-white/15 bg-[#111214] p-5"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Quick actions</p><div className="mt-4 flex flex-wrap gap-3"><button onClick={() => setSection("orders")} className="border border-white/20 px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]">Review orders</button><button onClick={() => setSection("products")} className="border border-white/20 px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]">Manage shop</button><button onClick={() => setSection("homepage")} className="border border-white/20 px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]">Edit homepage</button></div></div></div> : null}{section === "orders" ? <div className="space-y-5"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Fulfillment desk</p><h1 className="mt-1 font-display text-5xl uppercase text-white">Orders</h1><p className="mt-3 text-sm text-white/45">Approve submitted payments, then move paid orders through processing, shipping, and delivery.</p></div>{orders.length ? <div className="space-y-4">{orders.map((order) => <OrderCard key={order.id} order={order} onUpdated={load} />)}</div> : <p className="border-y border-white/10 py-10 text-sm text-white/45">No orders yet.</p>}</div> : null}{section === "products" ? <ProductManager products={products} reload={load} notify={refreshCatalog} /> : null}{section === "homepage" ? <HomepageEditor initial={homepage} reload={load} notify={refreshCatalog} /> : null}{section === "roles" ? <RoleManager profiles={profiles} reload={load} /> : null}</main></div></section>;
+  return <section className="min-h-screen bg-[#0c0d0e] pt-[68px]"><div className="border-b border-white/15 bg-[#101113] px-4 py-10 sm:px-6 lg:px-9"><div className="mx-auto flex max-w-[1440px] flex-col justify-between gap-6 lg:flex-row lg:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#ff5a36]">Underrated control room</p><h1 className="mt-3 font-display text-6xl uppercase leading-[.75] tracking-[-.05em] text-white sm:text-8xl">Store<br /><em className="text-[#ff5a36]">admin.</em></h1></div><div className="flex items-center gap-3 border border-white/15 px-4 py-3"><ShieldCheck size={16} className="text-[#ff5a36]" /><div><p className="text-xs font-bold text-white">{profile.full_name || user.email}</p><p className="mt-1 text-[10px] font-black uppercase tracking-[.14em] text-white/40">Administrator</p></div></div></div></div><div className="mx-auto grid max-w-[1440px] gap-6 px-4 py-7 sm:px-6 lg:grid-cols-[220px_1fr] lg:px-9"><aside className="flex gap-2 overflow-x-auto lg:block lg:space-y-1">{navigation.map((item) => <button key={item.id} onClick={() => setSection(item.id)} className={`flex shrink-0 items-center gap-3 border px-3 py-3 text-left text-[10px] font-black uppercase tracking-[.14em] transition lg:w-full ${section === item.id ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/10 text-white/50 hover:border-white/30 hover:text-white"}`}><item.icon size={15} />{item.label}</button>)}</aside><main className="min-w-0">{dataError ? <p className="mb-5 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-4 text-sm text-[#ff5a36]">{dataError}. Apply the latest Supabase migrations before using administration.</p> : null}{loadingData ? <p className="mb-5 text-sm text-white/45">Refreshing administration data...</p> : null}{section === "overview" ? <div className="space-y-6"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">At a glance</p><h2 className="mt-1 font-display text-5xl uppercase text-white">Control room</h2></div><div className="grid gap-4 sm:grid-cols-3"><div className="border border-white/15 bg-[#111214] p-5"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Payment review</p><p className="mt-3 font-display text-6xl text-white">{counts.open.toString().padStart(2, "0")}</p><p className="mt-2 text-xs text-white/40">orders waiting</p></div><div className="border border-white/15 bg-[#111214] p-5"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Fulfillment</p><p className="mt-3 font-display text-6xl text-white">{counts.fulfillment.toString().padStart(2, "0")}</p><p className="mt-2 text-xs text-white/40">active orders</p></div><div className="border border-white/15 bg-[#111214] p-5"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Published catalog</p><p className="mt-3 font-display text-6xl text-white">{counts.published.toString().padStart(2, "0")}</p><p className="mt-2 text-xs text-white/40">live items</p></div></div><div className="border border-white/15 bg-[#111214] p-5"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Quick actions</p><div className="mt-4 flex flex-wrap gap-3"><button onClick={() => setSection("orders")} className="border border-white/20 px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]">Review orders</button><button onClick={() => setSection("products")} className="border border-white/20 px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]">Manage shop</button><button onClick={() => setSection("homepage")} className="border border-white/20 px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]">Edit homepage</button></div></div></div> : null}{section === "orders" ? <div className="space-y-5"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Fulfillment desk</p><h1 className="mt-1 font-display text-5xl uppercase text-white">Orders</h1><p className="mt-3 text-sm text-white/45">Approve submitted payments, then move paid orders through processing, shipping, and delivery.</p></div>{orders.length ? <div className="space-y-4">{orders.map((order) => <OrderCard key={order.id} order={order} onUpdated={load} />)}</div> : <p className="border-y border-white/10 py-10 text-sm text-white/45">No orders yet.</p>}</div> : null}{section === "products" ? <ProductManager products={products} reload={load} notify={refreshCatalog} /> : null}{section === "homepage" ? <HomepageEditor initial={homepage} products={products} reload={load} notify={refreshCatalog} /> : null}{section === "roles" ? <RoleManager profiles={profiles} reload={load} /> : null}</main></div></section>;
 }

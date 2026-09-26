@@ -39,6 +39,18 @@ with checks as (
   select 'homepage seed row',
          case when (select count(*) from public.homepage_content) = 1 then 'ok' else 'MISSING' end
   union all
+  select 'homepage journal columns',
+         case when (
+           select count(*) from information_schema.columns
+           where table_schema = 'public' and table_name = 'homepage_content'
+             and column_name in (
+               'journal_label','journal_title','journal_accent','journal_description',
+               'journal_post_one_image_path','journal_post_one_label','journal_post_one_place',
+               'journal_post_two_image_path','journal_post_two_label','journal_post_two_place',
+               'journal_post_three_image_path','journal_post_three_label','journal_post_three_place'
+             )
+         ) = 13 then 'ok' else 'MISSING' end
+  union all
   select 'address check constraints',
          case when (
            select count(*) from pg_constraint

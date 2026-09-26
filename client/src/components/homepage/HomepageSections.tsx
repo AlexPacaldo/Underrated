@@ -10,12 +10,6 @@ import { type ReactNode, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 
-const referencePosts = [
-  { image: "/manus-storage/underrated-reference-profile_080efc99.png", label: "From the bench", place: "Studio notes" },
-  { image: "/manus-storage/underrated-reference-grid-1_ab5c0361.png", label: "Release archive", place: "Hoods / caps / color" },
-  { image: "/manus-storage/underrated-reference-grid-2_92e5ffa0.png", label: "Built to show", place: "Details in the dark" },
-];
-
 export type HomepagePreviewMode = {
   active: HomepageSectionId;
   onSelect: (section: HomepageSectionId) => void;
@@ -27,6 +21,14 @@ export type HomepageSectionsProps = {
   categories: CatalogCategory[];
   preview?: HomepagePreviewMode | null;
 };
+
+function journalCards(content: HomepageContent) {
+  return [
+    { image: content.journal_post_one_image_path, label: content.journal_post_one_label, place: content.journal_post_one_place },
+    { image: content.journal_post_two_image_path, label: content.journal_post_two_label, place: content.journal_post_two_place },
+    { image: content.journal_post_three_image_path, label: content.journal_post_three_label, place: content.journal_post_three_place },
+  ];
+}
 
 function SectionShell({ children, id, label, editable, preview }: { children: ReactNode; id: HomepageSectionId | null; label: string; editable: boolean; preview?: HomepagePreviewMode | null }) {
   if (!preview) return <>{children}</>;
@@ -86,8 +88,8 @@ export default function HomepageSections({ content, products, categories, previe
         <section className="relative overflow-hidden bg-[#eae6df] text-[#0c0d0e]"><div className="mx-auto grid max-w-[1440px] lg:grid-cols-[.92fr_1.08fr]"><div className="flex min-h-[510px] flex-col justify-between px-4 py-12 sm:px-6 lg:min-h-[650px] lg:px-9 lg:py-16"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#ff5a36]">Why it matters</p><h2 className="mt-5 max-w-md font-display text-[clamp(4.6rem,8vw,8.2rem)] uppercase leading-[.68] tracking-[-.06em]">Ride the<br /><em>details.</em></h2></div><div className="max-w-sm border-t border-black/25 pt-5"><p className="text-sm leading-6 text-black/65">The parts you reach for should earn their space. We make visual decisions feel physical: a sharper profile, a better grip, a color that finds the light.</p><Link href="/about" className="mt-6 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.16em] text-black hover:text-[#ff5a36]">Our design attitude <ArrowRight size={14} /></Link></div></div><div className="relative min-h-[460px] overflow-hidden bg-[#0c0d0e]"><img src={content.story_image_path} alt={content.story_alt} className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" /><p className="absolute bottom-7 left-6 max-w-[320px] font-display text-5xl uppercase leading-[.75] text-white sm:left-9 sm:text-6xl">{content.story_title}<br /><em className="text-[#ff5a36]">{content.story_accent}</em></p><span className="absolute right-6 top-6 text-[10px] font-bold uppercase tracking-[.18em] text-white/65">{content.story_label}</span></div></div></section>
       </SectionShell>
 
-      <SectionShell id={null} label="Visual journal" editable={false} preview={preview}>
-        <section id="journal" className="bg-[#0c0d0e] px-4 py-16 sm:px-6 lg:px-9 lg:py-24"><div className="mx-auto max-w-[1440px]"><div className="mb-9 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#ff5a36]">Visual journal</p><h2 className="mt-3 font-display text-6xl uppercase leading-[.75] tracking-[-.05em] text-white sm:text-7xl">Notes from<br />the <em>bench.</em></h2></div><p className="max-w-xs text-sm leading-6 text-white/45">The supplied social work sets the visual direction: bold parts, tough shadows, no apologies.</p></div><div className="grid gap-3 md:grid-cols-3">{referencePosts.map((post, index) => <article key={post.label} className={`group relative overflow-hidden bg-[#151719] ${index === 1 ? "md:translate-y-12" : ""}`}><div className="aspect-[4/5] overflow-hidden"><img src={post.image} alt={`${post.label} cycling imagery`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" /></div><div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent p-5 pt-16"><p className="font-display text-3xl uppercase text-white">{post.label}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[.14em] text-white/60">{post.place}</p></div></article>)}</div></div></section>
+      <SectionShell id="journal" label="Notes from the bench" editable preview={preview}>
+        <section id="journal" className="bg-[#0c0d0e] px-4 py-16 sm:px-6 lg:px-9 lg:py-24"><div className="mx-auto max-w-[1440px]"><div className="mb-9 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#ff5a36]">{content.journal_label}</p><h2 className="mt-3 font-display text-6xl uppercase leading-[.75] tracking-[-.05em] text-white sm:text-7xl">{content.journal_title}<br /><em className="text-[#ff5a36]">{content.journal_accent}</em></h2></div><p className="max-w-xs text-sm leading-6 text-white/45">{content.journal_description}</p></div><div className="grid gap-3 md:grid-cols-3">{journalCards(content).map((post, index) => <article key={index} className={`group relative overflow-hidden bg-[#151719] ${index === 1 ? "md:translate-y-12" : ""}`}><div className="aspect-[4/5] overflow-hidden"><img src={post.image} alt={`${post.label} cycling imagery`} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" /></div><div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent p-5 pt-16"><p className="font-display text-3xl uppercase text-white">{post.label}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[.14em] text-white/60">{post.place}</p></div></article>)}</div></div></section>
       </SectionShell>
 
       <SectionShell id={null} label="Release list" editable={false} preview={preview}>

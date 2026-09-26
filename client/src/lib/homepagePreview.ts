@@ -9,13 +9,14 @@ export const previewContentMessage = "homepage-preview:content";
 export const previewReadyMessage = "homepage-preview:ready";
 export const previewSelectMessage = "homepage-preview:select";
 export const previewMetricsMessage = "homepage-preview:metrics";
+export const previewRefreshMessage = "homepage-preview:refresh";
 
 export type HomepagePreviewMetrics = {
   height: number;
   offsets: Partial<Record<HomepageSectionId, number>>;
 };
 
-const sections: HomepageSectionId[] = ["hero", "drop", "story"];
+const sections: HomepageSectionId[] = ["hero", "drop", "story", "journal"];
 
 export function postToParent(message: Record<string, unknown>) {
   if (typeof window === "undefined" || window.parent === window) return;

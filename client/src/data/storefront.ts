@@ -1,4 +1,4 @@
-export type HomepageSectionId = "hero" | "drop" | "story";
+export type HomepageSectionId = "hero" | "drop" | "story" | "journal";
 
 export type HomepageContent = {
   hero_image_path: string;
@@ -17,6 +17,19 @@ export type HomepageContent = {
   story_label: string;
   story_title: string;
   story_accent: string;
+  journal_label: string;
+  journal_title: string;
+  journal_accent: string;
+  journal_description: string;
+  journal_post_one_image_path: string;
+  journal_post_one_label: string;
+  journal_post_one_place: string;
+  journal_post_two_image_path: string;
+  journal_post_two_label: string;
+  journal_post_two_place: string;
+  journal_post_three_image_path: string;
+  journal_post_three_label: string;
+  journal_post_three_place: string;
 };
 
 export const defaultHomepageContent: HomepageContent = {
@@ -36,4 +49,17 @@ export const defaultHomepageContent: HomepageContent = {
   story_label: "The new cockpit / 01",
   story_title: "Made to",
   story_accent: "be noticed.",
+  journal_label: "Visual journal",
+  journal_title: "Notes from the",
+  journal_accent: "bench.",
+  journal_description: "The supplied social work sets the visual direction: bold parts, tough shadows, no apologies.",
+  journal_post_one_image_path: "/manus-storage/underrated-reference-profile_080efc99.png",
+  journal_post_one_label: "From the bench",
+  journal_post_one_place: "Studio notes",
+  journal_post_two_image_path: "/manus-storage/underrated-reference-grid-1_ab5c0361.png",
+  journal_post_two_label: "Release archive",
+  journal_post_two_place: "Hoods / caps / color",
+  journal_post_three_image_path: "/manus-storage/underrated-reference-grid-2_92e5ffa0.png",
+  journal_post_three_label: "Built to show",
+  journal_post_three_place: "Details in the dark",
 };

@@ -78,6 +78,19 @@ export function mapHomepage(value: unknown): HomepageContent {
     story_label: text("story_label", defaultHomepageContent.story_label),
     story_title: text("story_title", defaultHomepageContent.story_title),
     story_accent: text("story_accent", defaultHomepageContent.story_accent),
+    journal_label: text("journal_label", defaultHomepageContent.journal_label),
+    journal_title: text("journal_title", defaultHomepageContent.journal_title),
+    journal_accent: text("journal_accent", defaultHomepageContent.journal_accent),
+    journal_description: text("journal_description", defaultHomepageContent.journal_description),
+    journal_post_one_image_path: text("journal_post_one_image_path", defaultHomepageContent.journal_post_one_image_path),
+    journal_post_one_label: text("journal_post_one_label", defaultHomepageContent.journal_post_one_label),
+    journal_post_one_place: text("journal_post_one_place", defaultHomepageContent.journal_post_one_place),
+    journal_post_two_image_path: text("journal_post_two_image_path", defaultHomepageContent.journal_post_two_image_path),
+    journal_post_two_label: text("journal_post_two_label", defaultHomepageContent.journal_post_two_label),
+    journal_post_two_place: text("journal_post_two_place", defaultHomepageContent.journal_post_two_place),
+    journal_post_three_image_path: text("journal_post_three_image_path", defaultHomepageContent.journal_post_three_image_path),
+    journal_post_three_label: text("journal_post_three_label", defaultHomepageContent.journal_post_three_label),
+    journal_post_three_place: text("journal_post_three_place", defaultHomepageContent.journal_post_three_place),
   };
 }
 

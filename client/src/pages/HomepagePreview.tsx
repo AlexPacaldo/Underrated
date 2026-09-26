@@ -4,13 +4,13 @@
 import HomepageSections from "@/components/homepage/HomepageSections";
 import { useCatalog } from "@/contexts/CatalogContext";
 import { defaultHomepageContent, type HomepageContent, type HomepageSectionId } from "@/data/storefront";
-import { isSameOriginMessage, postToParent, previewMetricsMessage, previewReadyMessage, previewSelectMessage, readPreviewContent } from "@/lib/homepagePreview";
+import { isPreviewType, isSameOriginMessage, postToParent, previewMetricsMessage, previewReadyMessage, previewRefreshMessage, previewSelectMessage, readPreviewContent } from "@/lib/homepagePreview";
 import { useCallback, useEffect, useState } from "react";
 
-const editableSections: HomepageSectionId[] = ["hero", "drop", "story"];
+const editableSections: HomepageSectionId[] = ["hero", "drop", "story", "journal"];
 
 export default function HomepagePreview() {
-  const { products, categories } = useCatalog();
+  const { products, categories, refresh } = useCatalog();
   const [content, setContent] = useState<HomepageContent>(defaultHomepageContent);
   const [section, setSection] = useState<HomepageSectionId>("hero");
 
@@ -35,6 +35,7 @@ export default function HomepagePreview() {
       if (!isSameOriginMessage(event)) return;
       const next = readPreviewContent(event.data);
       if (next) setContent(next);
+      if (isPreviewType(event.data, previewRefreshMessage)) void refresh();
     };
 
     const swallowChromeClicks = (event: MouseEvent) => {
@@ -62,7 +63,7 @@ export default function HomepagePreview() {
       document.removeEventListener("click", swallowChromeClicks, true);
       document.documentElement.style.overflow = "";
     };
-  }, []);
+  }, [refresh]);
 
   return <HomepageSections content={content} products={products} categories={categories} preview={{ active: section, onSelect: select }} />;
 }
