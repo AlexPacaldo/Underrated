@@ -167,21 +167,19 @@ function ProductEditor({ product, onSaved, onCancel }: { product: Product; onSav
   const [device, setDevice] = useState(previewDevices[1]);
   const [previewHeight, setPreviewHeight] = useState(1500);
   const [focusRequest, setFocusRequest] = useState<{ field: ProductPreviewField; id: number } | null>(null);
-  const focusId = useRef(0);
+const focusId = useRef(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const previewRef = useRef<Product>(product);
   const { stageRef, scale } = usePreviewScale(device.width);
   const update = <K extends keyof Product>(key: K, value: Product[K]) => setDraft((current) => ({ ...current, [key]: value }));
 
 // The preview parses the same textareas the save writes, so the frame shows exactly what gets stored.
   const previewProduct = useMemo<Product>(() => ({ ...draft, ...normalizeImages(draft.image, draft.images ?? []), image_positions: draft.image_positions, finishes: draft.finishes.map((item) => item.trim()).filter(Boolean), specs: parseSpecText(specText), fitment: { ...draft.fitment, compatibility: parseLineList(fitmentText) } }), [draft, specText, fitmentText]);
-  useEffect(() => { previewRef.current = previewProduct; }, [previewProduct]);
 
   const pushPreview = useCallback(() => {
-    frameRef.current?.contentWindow?.postMessage({ type: productPreviewProductMessage, product: previewRef.current }, window.location.origin);
-  }, []);
+    frameRef.current?.contentWindow?.postMessage({ type: productPreviewProductMessage, product: previewProduct }, window.location.origin);
+  }, [previewProduct]);
 
-  useEffect(() => { pushPreview(); }, [previewProduct, pushPreview]);
+  useEffect(() => { pushPreview(); }, [pushPreview]);
 
   const handlePreviewMessage = useCallback((data: unknown) => {
     const selected = readPreviewField(data);
