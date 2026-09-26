@@ -7,7 +7,7 @@ export default function ProductVisual({ product, compact = false, src, position,
   const image = src ?? product.image;
 
   if (image) {
-    return <img src={image} alt={product.name} style={{ objectPosition: position ?? "center", ...style }} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]" />;
+    return <img src={image} alt={product.name} style={{ objectPosition: position ?? "center", pointerEvents: "none", ...style }} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]" />;
   }
 
   return (

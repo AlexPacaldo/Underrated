@@ -252,7 +252,7 @@ function ProductEditor({ product, onSaved, onCancel }: { product: Product; onSav
   const [framing, setFraming] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number; posX: number; posY: number } | null>(null);
   const [zoom, setZoom] = useState(1);
-  const framingPhotoRef = useRef<string | undefined>(undefined);
+  const framingPhotoRef = useRef<string | undefined>(gallery[0]);
 
   useEffect(() => {
     framingPhotoRef.current = framing && gallery.includes(framing) ? framing : gallery[0];
