@@ -1,3 +1,5 @@
+export type HomepageSectionId = "hero" | "drop" | "story";
+
 export type HomepageContent = {
   hero_image_path: string;
   hero_alt: string;

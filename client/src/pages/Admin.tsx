@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Archive, ArrowLeft, Check, ImagePlus, LayoutDashboard, Package, Save, ShieldCheck, Upload, Users } from "lucide-react";
+import { Archive, ArrowLeft, Check, ExternalLink, ImagePlus, LayoutDashboard, Package, Save, ShieldCheck, Undo2, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth, type AccountRole } from "@/contexts/AuthContext";
 import { useCatalog } from "@/contexts/CatalogContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import type { Product, ProductVisual } from "@/data/products";
-import { defaultHomepageContent, type HomepageContent } from "@/data/storefront";
+import { defaultHomepageContent, type HomepageContent, type HomepageSectionId } from "@/data/storefront";
 import { formatDeliveryAddress } from "@/lib/deliveryAddress";
+import { homepagePreviewPath, isPreviewType, isSameOriginMessage, previewContentMessage, previewReadyMessage, readPreviewMetrics, readPreviewSection, type HomepagePreviewMetrics } from "@/lib/homepagePreview";
 import { fetchAdminHomepage, fetchAdminOrders, fetchAdminProducts, fetchAdminProfiles, saveAdminHomepage, saveAdminProduct, setAdminProductArchived, setAdminProfileRole, updateAdminOrderStatus, uploadStorefrontAsset, type AdminOrder, type AdminOrderStatus, type AdminProfile } from "@/lib/admin";
 
 type Section = "overview" | "orders" | "products" | "homepage" | "roles";
@@ -187,28 +188,121 @@ function ProductManager({ products, reload, notify }: { products: Product[]; rel
   return <div className="space-y-5"><div className="flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Catalog</p><h1 className="mt-1 font-display text-5xl uppercase text-white">Shop items</h1></div><button onClick={() => setEditing(newProduct())} className="bg-[#ff5a36] px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-black">Add item</button></div>{editing ? <ProductEditor product={editing} onSaved={async () => { setEditing(null); await reload(); await notify(); }} onCancel={() => setEditing(null)} /> : null}<div className="divide-y divide-white/10 border-y border-white/10">{products.map((product) => <div key={product.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-bold text-white">{product.name}</p><p className="mt-1 text-xs text-white/40">{product.category} · {product.slug} · {product.archived ? "Archived" : product.featured ? "Featured" : "Published"}</p></div><p className="text-sm font-bold text-white">₱{product.price.toLocaleString("en-PH")}</p><div className="flex gap-2"><button onClick={() => setEditing(product)} className="border border-white/20 px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-white/65 hover:border-[#ff5a36] hover:text-[#ff5a36]">Edit</button><button onClick={() => void toggleArchive(product)} className="border border-white/20 px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-white/65 hover:border-[#ff5a36] hover:text-[#ff5a36]">{product.archived ? "Restore" : "Archive"}</button></div></div>)}</div></div>;
 }
 
+type HomepageField = {
+  key: keyof HomepageContent;
+  label: string;
+  hint?: string;
+  rows?: number;
+  upload?: boolean;
+};
+
+const homepageSections: { id: HomepageSectionId; label: string; summary: string; fields: HomepageField[] }[] = [
+  { id: "hero", label: "Hero", summary: "The full-bleed opening frame and the oversized display type that sits on top of it.", fields: [
+    { key: "hero_kicker", label: "Kicker" },
+    { key: "hero_title", label: "Title / first line" },
+    { key: "hero_accent", label: "Accent / second line", hint: "Signal tangerine" },
+    { key: "hero_suffix", label: "Title / third line" },
+    { key: "hero_description", label: "Description", rows: 3 },
+    { key: "hero_image_path", label: "Image URL", upload: true },
+    { key: "hero_alt", label: "Image alt text", hint: "For screen readers" },
+  ] },
+  { id: "drop", label: "Drop", summary: "The heading that introduces the highlighted shop items further down the page.", fields: [
+    { key: "drop_label", label: "Label" },
+    { key: "drop_title", label: "Title" },
+    { key: "drop_accent", label: "Accent", hint: "Signal tangerine" },
+    { key: "drop_description", label: "Description", rows: 3 },
+  ] },
+  { id: "story", label: "Story", summary: "The editorial split panel with the light background and its overlay type.", fields: [
+    { key: "story_label", label: "Overlay label" },
+    { key: "story_title", label: "Title" },
+    { key: "story_accent", label: "Accent", hint: "Signal tangerine" },
+    { key: "story_image_path", label: "Image URL", upload: true },
+    { key: "story_alt", label: "Image alt text", hint: "For screen readers" },
+  ] },
+];
+
+const previewDevices = [
+  { id: "desktop", label: "Desktop", width: 1440 },
+  { id: "laptop", label: "Laptop", width: 1280 },
+  { id: "tablet", label: "Tablet", width: 834 },
+  { id: "phone", label: "Phone", width: 390 },
+];
+
 function HomepageEditor({ initial, reload, notify }: { initial: HomepageContent; reload: () => Promise<void>; notify: () => Promise<void> }) {
   const [content, setContent] = useState(initial);
+  const [saved, setSaved] = useState(initial);
+  const [section, setSection] = useState<HomepageSectionId>("hero");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  useEffect(() => setContent(initial), [initial]);
+  const [device, setDevice] = useState(previewDevices[0]);
+  const [stageWidth, setStageWidth] = useState(0);
+  const [metrics, setMetrics] = useState<HomepagePreviewMetrics>({ height: 3400, offsets: {} });
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const draftRef = useRef(content);
+
+  const dirty = useMemo(() => (Object.keys(saved) as (keyof HomepageContent)[]).some((key) => saved[key] !== content[key]), [content, saved]);
+  const dirtyRef = useRef(false);
+  useEffect(() => { dirtyRef.current = dirty; draftRef.current = content; }, [content, dirty]);
+  useEffect(() => { if (dirtyRef.current) return; setContent(initial); setSaved(initial); }, [initial]);
+
+  const active = homepageSections.find((item) => item.id === section) ?? homepageSections[0];
+  const scale = stageWidth > 0 ? Math.min(1, stageWidth / device.width) : 1;
+
+  const pushDraft = useCallback(() => {
+    frameRef.current?.contentWindow?.postMessage({ type: previewContentMessage, content: draftRef.current }, window.location.origin);
+  }, []);
+
+  useEffect(() => { pushDraft(); }, [content, pushDraft]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (!isSameOriginMessage(event)) return;
+      if (isPreviewType(event.data, previewReadyMessage)) { pushDraft(); return; }
+      const selected = readPreviewSection(event.data);
+      if (selected) { setSection(selected); return; }
+      const next = readPreviewMetrics(event.data);
+      if (next) setMetrics(next);
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [pushDraft]);
+
+  useEffect(() => {
+    const node = stageRef.current;
+    if (!node) return;
+    setStageWidth(node.clientWidth);
+    const observer = new ResizeObserver(([entry]) => setStageWidth(entry.contentRect.width));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const top = metrics.offsets[section];
+    if (top === undefined) return;
+    stageRef.current?.scrollTo({ top: Math.max(0, top * scale - 12), behavior: "smooth" });
+  }, [metrics, scale, section]);
+
   const update = (key: keyof HomepageContent, value: string) => setContent((current) => ({ ...current, [key]: value }));
-  const upload = async (file: File | undefined, key: "hero_image_path" | "story_image_path") => {
+
+  const upload = async (file: File | undefined, key: keyof HomepageContent) => {
     if (!file) return;
     setUploading(true);
     try {
       update(key, await uploadStorefrontAsset(file, "homepage"));
-      toast.success("Homepage image uploaded.");
+      toast.success("Homepage image uploaded.", { description: "Save the homepage to publish it." });
     } catch (error) {
       toast.error("Could not upload image.", { description: error instanceof Error ? error.message : "Try again." });
     } finally {
       setUploading(false);
     }
   };
+
   const save = async () => {
     setSaving(true);
     try {
-      await saveAdminHomepage(content);
+      const next = await saveAdminHomepage(content);
+      setSaved(next);
       toast.success("Homepage content saved.");
       await reload();
       await notify();
@@ -218,7 +312,45 @@ function HomepageEditor({ initial, reload, notify }: { initial: HomepageContent;
       setSaving(false);
     }
   };
-  return <div className="space-y-5"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Storefront content</p><h1 className="mt-1 font-display text-5xl uppercase text-white">Homepage</h1><p className="mt-3 max-w-lg text-sm leading-6 text-white/45">Edit the hero campaign, drop introduction, and the main editorial image without changing the storefront code.</p></div><div className="grid gap-4 sm:grid-cols-2"><label className={labelClass}>Hero image URL<input value={content.hero_image_path} onChange={(event) => update("hero_image_path", event.target.value)} className={inputClass} /></label><label className={labelClass}>Hero image alt<input value={content.hero_alt} onChange={(event) => update("hero_alt", event.target.value)} className={inputClass} /></label><label className={labelClass}>Hero kicker<input value={content.hero_kicker} onChange={(event) => update("hero_kicker", event.target.value)} className={inputClass} /></label><label className={labelClass}>Hero title<input value={content.hero_title} onChange={(event) => update("hero_title", event.target.value)} className={inputClass} /></label><label className={labelClass}>Hero accent<input value={content.hero_accent} onChange={(event) => update("hero_accent", event.target.value)} className={inputClass} /></label><label className={labelClass}>Hero suffix<input value={content.hero_suffix} onChange={(event) => update("hero_suffix", event.target.value)} className={inputClass} /></label><label className={`${labelClass} sm:col-span-2`}>Hero description<textarea value={content.hero_description} onChange={(event) => update("hero_description", event.target.value)} className={`${inputClass} min-h-24 py-3`} /></label><label className={`${labelClass} sm:col-span-2`}>Upload hero image<input type="file" accept="image/*" onChange={(event) => void upload(event.target.files?.[0], "hero_image_path")} className="file:mr-3 file:rounded-none file:border-0 file:bg-[#ff5a36] file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:text-black" />{uploading ? <span className="mt-1 text-[10px] normal-case tracking-normal text-white/35">Uploading...</span> : null}</label><label className={labelClass}>Drop label<input value={content.drop_label} onChange={(event) => update("drop_label", event.target.value)} className={inputClass} /></label><label className={labelClass}>Drop title<input value={content.drop_title} onChange={(event) => update("drop_title", event.target.value)} className={inputClass} /></label><label className={labelClass}>Drop accent<input value={content.drop_accent} onChange={(event) => update("drop_accent", event.target.value)} className={inputClass} /></label><label className={`${labelClass} sm:col-span-2`}>Drop description<textarea value={content.drop_description} onChange={(event) => update("drop_description", event.target.value)} className={`${inputClass} min-h-20 py-3`} /></label><label className={labelClass}>Story image URL<input value={content.story_image_path} onChange={(event) => update("story_image_path", event.target.value)} className={inputClass} /></label><label className={labelClass}>Story image alt<input value={content.story_alt} onChange={(event) => update("story_alt", event.target.value)} className={inputClass} /></label><label className={labelClass}>Story label<input value={content.story_label} onChange={(event) => update("story_label", event.target.value)} className={inputClass} /></label><label className={labelClass}>Story title<input value={content.story_title} onChange={(event) => update("story_title", event.target.value)} className={inputClass} /></label><label className={labelClass}>Story accent<input value={content.story_accent} onChange={(event) => update("story_accent", event.target.value)} className={inputClass} /></label><label className={`${labelClass} sm:col-span-2`}>Upload story image<input type="file" accept="image/*" onChange={(event) => void upload(event.target.files?.[0], "story_image_path")} className="file:mr-3 file:rounded-none file:border-0 file:bg-[#ff5a36] file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:text-black" /></label></div><button onClick={save} disabled={saving} className="inline-flex h-11 items-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black disabled:opacity-50">{saving ? "Saving..." : <><Save size={14} />Save homepage</>}</button></div>;
+
+  return <div className="space-y-5">
+    <div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Storefront content</p><h1 className="mt-1 font-display text-5xl uppercase text-white">Homepage</h1><p className="mt-3 max-w-lg text-sm leading-6 text-white/45">The frame on the left is the live homepage. Click an outlined section to edit it, or use the tabs on the right. The preview shows unsaved drafts; saving publishes them to the storefront.</p></div>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="min-w-0 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-white/15 bg-[#101113] p-3">
+          <div className="flex flex-wrap gap-1">{previewDevices.map((item) => <button key={item.id} onClick={() => setDevice(item)} className={`border px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] transition ${device.id === item.id ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/50 hover:border-white/40 hover:text-white"}`}>{item.label}</button>)}</div>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">{device.width}px / {Math.round(scale * 100)}%</span>
+            <a href="/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 border border-white/15 px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-white/60 transition hover:border-[#ff5a36] hover:text-[#ff5a36]">Live page <ExternalLink size={13} /></a>
+          </div>
+        </div>
+        <div ref={stageRef} className="max-h-[68vh] overflow-x-hidden overflow-y-auto border border-white/15 bg-[#08090a]">
+          <div className="flex justify-center p-2">
+            <div className="relative shrink-0 overflow-hidden" style={{ width: Math.round(device.width * scale), height: Math.round(metrics.height * scale) }}>
+              <iframe ref={frameRef} src={homepagePreviewPath} title="Homepage preview" className="absolute left-0 top-0 origin-top-left border-0 bg-[#0c0d0e]" style={{ width: device.width, height: metrics.height, transform: `scale(${scale})` }} />
+            </div>
+          </div>
+        </div>
+        <p className="text-[10px] leading-4 text-white/35">Outlined sections are editable. Dashed outlines and “fixed section” tags are built into the storefront code.</p>
+      </div>
+      <div className="min-w-0 self-start border border-white/15 bg-[#111214]">
+        <div className="flex border-b border-white/15">{homepageSections.map((item) => <button key={item.id} onClick={() => setSection(item.id)} className={`flex-1 border-r border-white/15 px-2 py-3 text-[10px] font-black uppercase tracking-[.12em] transition last:border-r-0 ${section === item.id ? "bg-[#ff5a36] text-black" : "text-white/50 hover:text-white"}`}>{item.label}</button>)}</div>
+        <div className="p-5">
+          <p className="text-xs leading-5 text-white/45">{active.summary}</p>
+          <div className="mt-5 grid gap-4">{active.fields.map((field) => <label key={field.key} className={labelClass}>
+            <span className="flex items-baseline justify-between gap-3">{field.label}{field.hint ? <span className="text-[9px] font-bold normal-case tracking-normal text-white/25">{field.hint}</span> : null}</span>
+            {field.rows ? <textarea rows={field.rows} value={content[field.key]} onChange={(event) => update(field.key, event.target.value)} className={`${inputClass} py-3`} /> : <input value={content[field.key]} onChange={(event) => update(field.key, event.target.value)} className={inputClass} />}
+            {field.upload ? <input type="file" accept="image/*" disabled={uploading} onChange={(event) => void upload(event.target.files?.[0], field.key)} className="h-auto cursor-pointer border border-dashed border-white/20 bg-transparent px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-white/50 file:mr-3 file:border-0 file:bg-[#ff5a36] file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:tracking-[.14em] file:text-black hover:border-white/40" /> : null}
+          </label>)}</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-t border-white/15 p-4">
+          <button onClick={save} disabled={saving || !dirty} className="inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black disabled:opacity-40">{saving ? "Saving..." : <><Save size={14} />Save homepage</>}</button>
+          <button onClick={() => setContent(saved)} disabled={!dirty || saving} className="inline-flex h-10 items-center gap-2 border border-white/20 px-4 text-[10px] font-black uppercase tracking-[.14em] text-white/60 transition hover:border-white/50 hover:text-white disabled:opacity-40"><Undo2 size={14} />Revert</button>
+          <span className={`ml-auto inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[.14em] ${dirty ? "text-[#ff5a36]" : "text-white/30"}`}>{dirty ? "Unsaved changes" : "Live on storefront"}</span>
+        </div>
+      </div>
+    </div>
+  </div>;
 }
 
 function RoleManager({ profiles, reload }: { profiles: AdminProfile[]; reload: () => Promise<void> }) {
