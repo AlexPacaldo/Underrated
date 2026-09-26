@@ -11,7 +11,7 @@ export function usePreviewScale(designWidth: number) {
   useEffect(() => {
     const node = stageRef.current;
     if (!node) return;
-    setAvailable(node.clientWidth);
+    // contentRect is the box left after the stage's border and padding, so a fitted frame never overflows its scroll area.
     const observer = new ResizeObserver(([entry]) => setAvailable(entry.contentRect.width));
     observer.observe(node);
     return () => observer.disconnect();
