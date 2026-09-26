@@ -20,6 +20,25 @@ export type ProductPreviewMode = {
   onSelect: (field: ProductPreviewField) => void;
 };
 
+/** Names the editor uses when it offers to pan the frame to a part of the item view. */
+export const productPreviewLabels: Record<ProductPreviewField, string> = {
+  name: "Name",
+  category: "Category",
+  price: "Price",
+  badge: "Badge",
+  image: "Gallery",
+  descriptor: "Descriptor",
+  description: "Description",
+  finishes: "Finishes",
+  specs: "Specs",
+  fitment: "Fit guide",
+};
+
+export type ProductPreviewMetrics = {
+  height: number;
+  offsets: Partial<Record<ProductPreviewField, number>>;
+};
+
 const visuals: ProductVisual[] = ["hoods", "valve", "saddle", "tape", "stem", "stand"];
 
 export function postToParent(message: Record<string, unknown>) {
@@ -80,8 +99,16 @@ export function readPreviewProduct(data: unknown): Product | null {
   };
 }
 
-export function readPreviewProductHeight(data: unknown): number | null {
+/** The frame reports how tall the item page is and where each outlined part sits, so the editor can pan to it. */
+export function readPreviewMetrics(data: unknown): ProductPreviewMetrics | null {
   const payload = asRecord(data);
   if (payload.type !== productPreviewMetricsMessage || typeof payload.height !== "number" || !Number.isFinite(payload.height)) return null;
-  return Math.ceil(payload.height);
+  const offsets: Partial<Record<ProductPreviewField, number>> = {};
+  if (payload.offsets && typeof payload.offsets === "object") {
+    for (const field of productPreviewFields) {
+      const value = (payload.offsets as Record<string, unknown>)[field];
+      if (typeof value === "number" && Number.isFinite(value)) offsets[field] = Math.max(0, Math.round(value));
+    }
+  }
+  return { height: Math.ceil(payload.height), offsets };
 }
