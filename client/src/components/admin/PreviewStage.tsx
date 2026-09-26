@@ -31,7 +31,7 @@ export default function PreviewStage({ src, title, designWidth, height, scale, s
     return () => window.removeEventListener("message", handleMessage);
   }, [onMessage, onReady, readyType]);
 
-  return <div ref={stageRef} className="max-h-[82vh] overflow-auto border border-white/15 bg-[#08090a] p-2">
+  return <div ref={stageRef} className="max-h-[88vh] overflow-auto border border-white/15 bg-[#08090a] p-2">
     {/* Auto margins rather than justify-center, so a frame wider than the column stays reachable by scrolling. */}
     <div className="relative mx-auto shrink-0 overflow-hidden" style={{ width: Math.round(designWidth * scale), height: Math.round(height * scale) }}>
       <iframe ref={frameRef} src={src} title={title} className="absolute left-0 top-0 origin-top-left border-0 bg-[#0c0d0e]" style={{ width: designWidth, height, transform: `scale(${scale})` }} />
