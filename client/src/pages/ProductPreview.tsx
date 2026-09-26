@@ -4,7 +4,7 @@
 import ProductCard from "@/components/ProductCard";
 import ProductDetailView from "@/components/ProductDetailView";
 import type { Product } from "@/data/products";
-import { postToParent, productPreviewMetricsMessage, productPreviewProductMessage, productPreviewReadyMessage, productPreviewSelectMessage, readPreviewProduct, type ProductPreviewField } from "@/lib/productPreview";
+import { postToParent, productPreviewMetricsMessage, productPreviewReadyMessage, productPreviewSelectMessage, readPreviewProduct, type ProductPreviewField } from "@/lib/productPreview";
 import { useCallback, useEffect, useState } from "react";
 
 const emptyDraft: Product = {
