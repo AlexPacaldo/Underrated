@@ -1,7 +1,8 @@
 /**
  * Design direction: Technical Drop Editorial — the admin item editor and its preview frame talk over one small typed message protocol.
  */
-import type { Product, ProductVisual } from "@/data/products";
+import type { Product, ProductVisual, ProductImagePosition } from "@/data/products";
+import { productImagePositions } from "@/data/products";
 
 export const productPreviewPath = "/admin/product-preview";
 
@@ -18,25 +19,6 @@ export type ProductPreviewField = typeof productPreviewFields[number];
 export type ProductPreviewMode = {
   active: ProductPreviewField | null;
   onSelect: (field: ProductPreviewField) => void;
-};
-
-/** Names the editor uses when it offers to pan the frame to a part of the item view. */
-export const productPreviewLabels: Record<ProductPreviewField, string> = {
-  name: "Name",
-  category: "Category",
-  price: "Price",
-  badge: "Badge",
-  image: "Gallery",
-  descriptor: "Descriptor",
-  description: "Description",
-  finishes: "Finishes",
-  specs: "Specs",
-  fitment: "Fit guide",
-};
-
-export type ProductPreviewMetrics = {
-  height: number;
-  offsets: Partial<Record<ProductPreviewField, number>>;
 };
 
 const visuals: ProductVisual[] = ["hoods", "valve", "saddle", "tape", "stem", "stand"];
@@ -78,6 +60,17 @@ export function readPreviewProduct(data: unknown): Product | null {
   const price = Number(row.price);
   const image = typeof row.image === "string" && row.image.trim() ? row.image : undefined;
   const images = imageList(row.images);
+  const imagePositions: Partial<Record<string, ProductImagePosition>> = {};
+  const rawPositions = row.image_positions;
+  if (rawPositions && typeof rawPositions === "object") {
+    const source = rawPositions as Record<string, unknown>;
+    for (const key of Object.keys(source)) {
+      const value = source[key];
+      if (typeof value === "string" && productImagePositions.includes(value as ProductImagePosition)) {
+        imagePositions[key] = value as ProductImagePosition;
+      }
+    }
+  }
   return {
     id: text(row.id, "draft"),
     slug: text(row.slug, ""),
@@ -90,25 +83,18 @@ export function readPreviewProduct(data: unknown): Product | null {
     finishes: list(row.finishes),
     image,
     images: images.filter((item) => item !== image),
+    imagePositions,
     visual,
     specs,
     fitment: { headline: text(rawFitment.headline, ""), compatibility: list(rawFitment.compatibility), checkBeforeRide: text(rawFitment.checkBeforeRide, "") },
     featured: Boolean(row.featured),
     archived: Boolean(row.archived),
-    sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : 0,
+    sortOrder: Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : 0,
   };
 }
 
-/** The frame reports how tall the item page is and where each outlined part sits, so the editor can pan to it. */
-export function readPreviewMetrics(data: unknown): ProductPreviewMetrics | null {
+export function readPreviewProductHeight(data: unknown): number | null {
   const payload = asRecord(data);
   if (payload.type !== productPreviewMetricsMessage || typeof payload.height !== "number" || !Number.isFinite(payload.height)) return null;
-  const offsets: Partial<Record<ProductPreviewField, number>> = {};
-  if (payload.offsets && typeof payload.offsets === "object") {
-    for (const field of productPreviewFields) {
-      const value = (payload.offsets as Record<string, unknown>)[field];
-      if (typeof value === "number" && Number.isFinite(value)) offsets[field] = Math.max(0, Math.round(value));
-    }
-  }
-  return { height: Math.ceil(payload.height), offsets };
+  return Math.ceil(payload.height);
 }

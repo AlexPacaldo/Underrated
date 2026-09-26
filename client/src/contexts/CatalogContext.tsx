@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { categories as fallbackCategories, products as fallbackProducts, type CatalogCategory, type Product, type ProductVisual } from "@/data/products";
+import { normalizeImagePositions, categories as fallbackCategories, products as fallbackProducts, type CatalogCategory, type Product, type ProductVisual } from "@/data/products";
 import { defaultHomepageContent, type HomepageContent } from "@/data/storefront";
 import { supabase } from "@/lib/supabase";
 
@@ -34,6 +34,7 @@ export function mapProduct(value: unknown): Product {
   const image = typeof row.image_path === "string" && row.image_path.trim() ? row.image_path : undefined;
   const rawImages = Array.isArray(row.images) ? row.images.filter((item): item is string => typeof item === "string") : [];
   const images = rawImages.map((item) => item.trim()).filter((item) => item && item !== image);
+  const imagePositions = normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), row.image_positions);
   const priceCents = Number(row.price_php_cents ?? 0);
 
   return {
@@ -48,6 +49,7 @@ export function mapProduct(value: unknown): Product {
     finishes: rawFinishes,
     image,
     images,
+    imagePositions,
     visual,
     specs,
     fitment: {
@@ -124,7 +126,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     requestId.current = currentRequest;
     setLoading(true);
     const [productResult, homepageResult] = await Promise.all([
-      supabase.from("products").select("id,slug,name,category,price_php_cents,badge,descriptor,description,finishes,image_path,images,visual,specs,fitment,featured,archived,sort_order").eq("archived", false).order("sort_order", { ascending: true }),
+      supabase.from("products").select("id,slug,name,category,price_php_cents,badge,descriptor,description,finishes,image_path,images,image_positions,visual,specs,fitment,featured,archived,sort_order").eq("archived", false).order("sort_order", { ascending: true }),
       supabase.from("homepage_content").select("*").eq("id", "primary").maybeSingle(),
     ]);
 

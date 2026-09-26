@@ -1,7 +1,7 @@
 import type { AccountRole } from "@/contexts/AuthContext";
 import { mapHomepage, mapProduct } from "@/contexts/CatalogContext";
 import type { HomepageContent } from "@/data/storefront";
-import type { Product } from "@/data/products";
+import { normalizeImagePositions, type Product } from "@/data/products";
 import type { DeliveryAddress } from "@/lib/deliveryAddress";
 import { supabase } from "@/lib/supabase";
 
@@ -88,6 +88,7 @@ export async function fetchAdminProducts() {
 export async function saveAdminProduct(product: Product) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const image = product.image?.trim() || null;
+  const images = (product.images ?? []).map((item) => item.trim()).filter((item) => item && item !== image);
   const { data, error } = await supabase.from("products").upsert({
     id: product.id,
     slug: product.slug.trim(),
@@ -99,15 +100,16 @@ export async function saveAdminProduct(product: Product) {
     description: product.description.trim(),
     finishes: product.finishes,
     image_path: image,
-    images: (product.images ?? []).map((item) => item.trim()).filter((item) => item && item !== image),
+    images,
+    // Framing is written against the final photo list, so removing a photo cannot leave a stale crop behind.
+    image_positions: normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), product.imagePositions),
     visual: product.visual,
     specs: product.specs,
     fitment: product.fitment,
     featured: Boolean(product.featured),
     archived: Boolean(product.archived),
     sort_order: product.sortOrder ?? 0,
-  }, { onConflict: "id" }).select("*").single();
-  if (error) throw error;
+  }, { onConflict: "id" }).select("*").single();  if (error) throw error;
   return mapProduct(data);
 }
 

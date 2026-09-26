@@ -4,7 +4,7 @@
 import ProductCard from "@/components/ProductCard";
 import ProductDetailView from "@/components/ProductDetailView";
 import type { Product } from "@/data/products";
-import { postToParent, productPreviewFields, productPreviewMetricsMessage, productPreviewReadyMessage, productPreviewSelectMessage, readPreviewProduct, type ProductPreviewField } from "@/lib/productPreview";
+import { postToParent, productPreviewMetricsMessage, productPreviewReadyMessage, productPreviewSelectMessage, readPreviewProduct, type ProductPreviewField } from "@/lib/productPreview";
 import { useCallback, useEffect, useState } from "react";
 
 const emptyDraft: Product = {
@@ -37,18 +37,7 @@ export default function ProductPreview() {
   useEffect(() => {
     document.documentElement.style.overflow = "hidden";
 
-    // The frame never scrolls itself, so an offset is just where the part sits from the top of the page.
-    // A field can appear twice, on the shop card and again in the item view, so the last one wins: the jump bar
-    // is for inspecting the tall item page, not the card sitting above it.
-    const report = () => {
-      const offsets: Partial<Record<ProductPreviewField, number>> = {};
-      for (const field of productPreviewFields) {
-        const nodes = document.querySelectorAll(`[data-product-anchor="${field}"]`);
-        const node = nodes[nodes.length - 1];
-        if (node) offsets[field] = Math.max(0, Math.round(node.getBoundingClientRect().top));
-      }
-      postToParent({ type: productPreviewMetricsMessage, height: document.documentElement.scrollHeight, offsets });
-    };
+    const report = () => postToParent({ type: productPreviewMetricsMessage, height: document.documentElement.scrollHeight });
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const next = readPreviewProduct(event.data);

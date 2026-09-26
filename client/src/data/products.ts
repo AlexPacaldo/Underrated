@@ -1,5 +1,39 @@
 export type ProductVisual = "hoods" | "valve" | "saddle" | "tape" | "stem" | "stand";
 
+/**
+ * Where a photo sits inside the frame that crops it. Photos always fill their frame, so this is what
+ * decides which part of the shot survives the crop, on the card, in the gallery and in the zoom.
+ */
+export const productImagePositions = ["top left", "top", "top right", "left", "center", "right", "bottom left", "bottom", "bottom right"] as const;
+
+export type ProductImagePosition = (typeof productImagePositions)[number];
+
+export function isProductImagePosition(value: unknown): value is ProductImagePosition {
+  return typeof value === "string" && (productImagePositions as readonly string[]).includes(value);
+}
+
+/** Every photo in order, the primary first. Framing is keyed by url, so this is the list positions are kept against. */
+export function productPhotos(product: Pick<Product, "image" | "images">) {
+  const photos: string[] = [];
+  for (const value of [product.image, ...(product.images ?? [])]) {
+    const item = typeof value === "string" ? value.trim() : "";
+    if (item && !photos.includes(item)) photos.push(item);
+  }
+  return photos;
+}
+
+/** Keeps a framing only if the photo still exists and the value is one of the nine real positions. */
+export function normalizeImagePositions(photos: string[], positions: unknown): Partial<Record<string, ProductImagePosition>> {
+  const result: Partial<Record<string, ProductImagePosition>> = {};
+  if (!positions || typeof positions !== "object") return result;
+  const source = positions as Record<string, unknown>;
+  for (const photo of photos) {
+    const value = source[photo];
+    if (isProductImagePosition(value)) result[photo] = value;
+  }
+  return result;
+}
+
 export type Product = {
   id: string;
   slug: string;
@@ -13,6 +47,8 @@ export type Product = {
   image?: string;
   /** Extra photos beyond the primary image, in gallery order. */
   images?: string[];
+  /** Which part of each photo to keep when a frame crops it, keyed by photo url. */
+  imagePositions?: Partial<Record<string, ProductImagePosition>>;
   visual: ProductVisual;
   specs: { label: string; value: string }[];
   fitment: {

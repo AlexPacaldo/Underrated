@@ -23,7 +23,7 @@ function galleryFrames(product: Product): GalleryFrameItem[] {
 
 function GalleryFrame({ product, frame, className = "" }: { product: Product; frame: GalleryFrameItem; className?: string }) {
   if (frame.kind === "photo") {
-    return <div className={`relative h-full w-full ${className}`}><ProductVisual product={product} src={frame.src} /><div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" /></div>;
+    return <div className={`relative h-full w-full ${className}`}><ProductVisual product={product} src={frame.src} position={frame.src ? product.imagePositions?.[frame.src] : undefined} /><div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" /></div>;
   }
 
   if (frame.kind === "macro") {

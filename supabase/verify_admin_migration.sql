@@ -65,6 +65,26 @@ with checks as (
            where jsonb_typeof(images) <> 'array'
          ) = 0 then 'ok' else 'BAD ROWS' end
   union all
+  select 'products image_positions column',
+         case when (
+           select count(*) from information_schema.columns
+           where table_schema = 'public' and table_name = 'products'
+             and column_name = 'image_positions'
+             and data_type = 'jsonb'
+         ) = 1 then 'ok' else 'MISSING' end
+  union all
+  select 'products image_positions is always an object',
+         case when (
+           select count(*) from public.products
+           where jsonb_typeof(image_positions) <> 'object'
+         ) = 0 then 'ok' else 'BAD ROWS' end
+  union all
+  select 'products image_positions check constraint',
+         case when (
+           select count(*) from pg_constraint
+           where conname = 'image_positions_is_object'
+         ) = 1 then 'ok' else 'MISSING' end
+  union all
   select 'address check constraints',
          case when (
            select count(*) from pg_constraint
