@@ -9,7 +9,10 @@ export const productImagePositions = ["top left", "top", "top right", "left", "c
 export type ProductImagePosition = (typeof productImagePositions)[number] | `${number}% ${number}%`;
 
 export function isProductImagePosition(value: unknown): value is ProductImagePosition {
-  return typeof value === "string" && (productImagePositions as readonly string[]).includes(value);
+  if (typeof value !== "string") return false;
+  if ((productImagePositions as readonly string[]).includes(value)) return true;
+  // Also accept percentage format like "50% 50%"
+  return /^\d+%\s+\d+%$/.test(value);
 }
 
 /** Every photo in order, the primary first. Framing is keyed by url, so this is the list positions are kept against. */
