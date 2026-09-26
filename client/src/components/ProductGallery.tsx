@@ -7,30 +7,18 @@ import type { Product } from "@/data/products";
 import { ChevronLeft, ChevronRight, Maximize2 } from "lucide-react";
 import { useState } from "react";
 
-type GalleryFrameItem = { label: string; index: string; src?: string; kind: "photo" | "macro" | "bench" };
+type GalleryFrameItem = { label: string; index: string; src?: string; kind: "photo" };
 
-const designedFrames: GalleryFrameItem[] = [
-  { label: "Surface detail", index: "", kind: "macro" },
-  { label: "Workshop view", index: "", kind: "bench" },
-];
+const designedFrames: GalleryFrameItem[] = [];
 
-/** Every real photo first, then the two designed views so a product never has an empty gallery. */
+/** Every real photo first. If no photos exist, the gallery will be empty. */
 function galleryFrames(product: Product): GalleryFrameItem[] {
   const photos = [product.image, ...(product.images ?? [])].filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-  const shot = photos.map((src, position) => ({ label: photos.length > 1 ? `Shop photo ${String(position + 1).padStart(2, "0")}` : "Object view", index: String(position + 1).padStart(2, "0"), src, kind: "photo" as const }));
-  return [...shot, ...designedFrames.map((item) => ({ ...item, index: String(shot.length + designedFrames.indexOf(item) + 1).padStart(2, "0") }))];
+  return photos.map((src, position) => ({ label: photos.length > 1 ? `Shop photo ${String(position + 1).padStart(2, "0")}` : "Object view", index: String(position + 1).padStart(2, "0"), src, kind: "photo" as const }));
 }
 
 function GalleryFrame({ product, frame, className = "" }: { product: Product; frame: GalleryFrameItem; className?: string }) {
-  if (frame.kind === "photo") {
-    return <div className={`relative h-full w-full ${className}`}><ProductVisual product={product} src={frame.src} position={frame.src ? product.imagePositions?.[frame.src] : undefined} /><div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" /></div>;
-  }
-
-  if (frame.kind === "macro") {
-    return <div className={`relative h-full w-full overflow-hidden bg-[#161719] ${className}`}><div className="absolute -inset-[12%] bg-[radial-gradient(circle_at_32%_45%,rgba(255,255,255,.16),transparent_6%,transparent_28%),linear-gradient(135deg,#08090a_8%,#31383b_37%,#111315_54%,#050506_100%)]" /><div className="absolute inset-x-[10%] top-[21%] h-[38%] rotate-[-16deg] border border-white/15 bg-[linear-gradient(110deg,transparent_8%,rgba(255,255,255,.16)_10%,transparent_16%,rgba(255,255,255,.08)_49%,transparent_55%)] shadow-[0_22px_28px_rgba(0,0,0,.75)]" /><span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-[.16em] text-white/45">finish / macro</span></div>;
-  }
-
-  return <div className={`relative h-full w-full overflow-hidden bg-[#121315] ${className}`}><div className="absolute inset-0 bg-[linear-gradient(120deg,#090a0b_0%,#101214_43%,#2b3030_43.3%,#131516_62%,#060707_100%)]" /><div className="absolute inset-x-[12%] bottom-[19%] h-[16%] rotate-[-5deg] border-y border-white/10 bg-[#0a0b0c] shadow-[0_15px_24px_rgba(0,0,0,.85)]" /><span className="absolute left-[18%] top-[23%] text-[clamp(4rem,10vw,9rem)] font-display uppercase leading-none text-white/[.07]">UC</span><div className="absolute right-[16%] top-[19%] h-[53%] w-px bg-[#ff5a36]/80" /><span className="absolute bottom-4 left-4 text-[10px] font-bold uppercase tracking-[.16em] text-white/45">bench / no. {product.id.slice(0, 2).toUpperCase()}</span></div>;
+  return <div className={`relative h-full w-full ${className}`}><ProductVisual product={product} src={frame.src} position={frame.src ? product.imagePositions?.[frame.src] : undefined} /><div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" /></div>;
 }
 
 export default function ProductGallery({ product }: { product: Product }) {
