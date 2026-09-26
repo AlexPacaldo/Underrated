@@ -173,8 +173,8 @@ function ProductEditor({ product, onSaved, onCancel }: { product: Product; onSav
   const { stageRef, scale } = usePreviewScale(device.width);
   const update = <K extends keyof Product>(key: K, value: Product[K]) => setDraft((current) => ({ ...current, [key]: value }));
 
-  // The preview parses the same textareas the save writes, so the frame shows exactly what gets stored.
-  const previewProduct = useMemo<Product>(() => ({ ...draft, ...normalizeImages(draft.image, draft.images ?? []), finishes: draft.finishes.map((item) => item.trim()).filter(Boolean), specs: parseSpecText(specText), fitment: { ...draft.fitment, compatibility: parseLineList(fitmentText) } }), [draft, specText, fitmentText]);
+// The preview parses the same textareas the save writes, so the frame shows exactly what gets stored.
+  const previewProduct = useMemo<Product>(() => ({ ...draft, ...normalizeImages(draft.image, draft.images ?? []), image_positions: draft.image_positions, finishes: draft.finishes.map((item) => item.trim()).filter(Boolean), specs: parseSpecText(specText), fitment: { ...draft.fitment, compatibility: parseLineList(fitmentText) } }), [draft, specText, fitmentText]);
   useEffect(() => { previewRef.current = previewProduct; }, [previewProduct]);
 
   const pushPreview = useCallback(() => {
