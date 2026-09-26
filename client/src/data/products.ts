@@ -6,7 +6,7 @@ export type ProductVisual = "hoods" | "valve" | "saddle" | "tape" | "stem" | "st
  */
 export const productImagePositions = ["top left", "top", "top right", "left", "center", "right", "bottom left", "bottom", "bottom right"] as const;
 
-export type ProductImagePosition = (typeof productImagePositions)[number];
+export type ProductImagePosition = (typeof productImagePositions)[number] | `${number}% ${number}%`;
 
 export function isProductImagePosition(value: unknown): value is ProductImagePosition {
   return typeof value === "string" && (productImagePositions as readonly string[]).includes(value);

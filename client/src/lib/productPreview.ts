@@ -2,7 +2,7 @@
  * Design direction: Technical Drop Editorial — the admin item editor and its preview frame talk over one small typed message protocol.
  */
 import type { Product, ProductVisual, ProductImagePosition } from "@/data/products";
-import { productImagePositions } from "@/data/products";
+import { productImagePositions, isProductImagePosition } from "@/data/products";
 
 export const productPreviewPath = "/admin/product-preview";
 
@@ -66,8 +66,8 @@ export function readPreviewProduct(data: unknown): Product | null {
     const source = rawPositions as Record<string, unknown>;
     for (const key of Object.keys(source)) {
       const value = source[key];
-      if (typeof value === "string" && productImagePositions.includes(value as ProductImagePosition)) {
-        imagePositions[key] = value as ProductImagePosition;
+      if (isProductImagePosition(value)) {
+        imagePositions[key] = value;
       }
     }
   }
