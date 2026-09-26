@@ -102,7 +102,7 @@ export async function saveAdminProduct(product: Product) {
     image_path: image,
     images,
     // Framing is written against the final photo list, so removing a photo cannot leave a stale crop behind.
-    image_positions: normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), product.imagePositions),
+    image_positions: normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), product.image_positions),
     visual: product.visual,
     specs: product.specs,
     fitment: product.fitment,

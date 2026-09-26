@@ -48,7 +48,7 @@ export type Product = {
   /** Extra photos beyond the primary image, in gallery order. */
   images?: string[];
   /** Which part of each photo to keep when a frame crops it, keyed by photo url. */
-  imagePositions?: Partial<Record<string, ProductImagePosition>>;
+  image_positions?: Partial<Record<string, ProductImagePosition>>;
   visual: ProductVisual;
   specs: { label: string; value: string }[];
   fitment: {

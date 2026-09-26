@@ -83,7 +83,7 @@ export function readPreviewProduct(data: unknown): Product | null {
     finishes: list(row.finishes),
     image,
     images: images.filter((item) => item !== image),
-    imagePositions,
+    image_positions: imagePositions,
     visual,
     specs,
     fitment: { headline: text(rawFitment.headline, ""), compatibility: list(rawFitment.compatibility), checkBeforeRide: text(rawFitment.checkBeforeRide, "") },

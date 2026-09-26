@@ -19,7 +19,7 @@ export default function ProductCard({ product, preview }: { product: Product; pr
       <PreviewField field="image" label="Photos" preview={preview}>
         <Link href={`/product/${product.slug}`} className="block">
           <div className="relative aspect-[4/5] overflow-hidden bg-[#161719]">
-            <ProductVisual product={product} position={product.imagePositions?.[product.image ?? ""]} />
+            <ProductVisual product={product} position={product.image_positions?.[product.image ?? ""]} />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
             {product.badge ? <span className="absolute left-3 top-3 border border-white/30 bg-black/55 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white backdrop-blur-sm">{product.badge}</span> : null}
             <span className="absolute bottom-3 left-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/70">{product.category}</span>

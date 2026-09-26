@@ -34,7 +34,7 @@ export function mapProduct(value: unknown): Product {
   const image = typeof row.image_path === "string" && row.image_path.trim() ? row.image_path : undefined;
   const rawImages = Array.isArray(row.images) ? row.images.filter((item): item is string => typeof item === "string") : [];
   const images = rawImages.map((item) => item.trim()).filter((item) => item && item !== image);
-  const imagePositions = normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), row.image_positions);
+  const image_positions = normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), row.image_positions);
   const priceCents = Number(row.price_php_cents ?? 0);
 
   return {
@@ -49,7 +49,7 @@ export function mapProduct(value: unknown): Product {
     finishes: rawFinishes,
     image,
     images,
-    imagePositions,
+    image_positions,
     visual,
     specs,
     fitment: {
