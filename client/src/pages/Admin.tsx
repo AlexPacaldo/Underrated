@@ -2,13 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Archive, ArrowLeft, Check, ExternalLink, ImagePlus, LayoutDashboard, Package, Save, ShieldCheck, Undo2, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
+import PreviewStage from "@/components/admin/PreviewStage";
+import { usePreviewScale } from "@/components/admin/usePreviewScale";
 import { useAuth, type AccountRole } from "@/contexts/AuthContext";
 import { useCatalog } from "@/contexts/CatalogContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import type { Product, ProductVisual } from "@/data/products";
 import { defaultHomepageContent, type HomepageContent, type HomepageSectionId } from "@/data/storefront";
 import { formatDeliveryAddress } from "@/lib/deliveryAddress";
-import { homepagePreviewPath, isPreviewType, isSameOriginMessage, previewContentMessage, previewReadyMessage, previewRefreshMessage, readPreviewMetrics, readPreviewSection, type HomepagePreviewMetrics } from "@/lib/homepagePreview";
+import { homepagePreviewPath, previewContentMessage, previewReadyMessage, previewRefreshMessage, readPreviewMetrics, readPreviewSection, type HomepagePreviewMetrics } from "@/lib/homepagePreview";
+import { productPreviewPath, productPreviewProductMessage, productPreviewReadyMessage, readPreviewProductHeight } from "@/lib/productPreview";
 import { fetchAdminHomepage, fetchAdminOrders, fetchAdminProducts, fetchAdminProfiles, saveAdminHomepage, saveAdminProduct, setAdminProductArchived, setAdminProductFeatured, setAdminProfileRole, updateAdminOrderStatus, uploadStorefrontAsset, type AdminOrder, type AdminOrderStatus, type AdminProfile } from "@/lib/admin";
 
 type Section = "overview" | "orders" | "products" | "homepage" | "roles";
@@ -100,13 +103,47 @@ function newProduct(): Product {
   return { id: `part-${Date.now()}`, slug: "", name: "", category: "Accessories", price: 0, descriptor: "", description: "", finishes: ["Graphite"], visual: "hoods", specs: [], fitment: { headline: "", compatibility: [], checkBeforeRide: "" }, featured: false, archived: false, sortOrder: 99 };
 }
 
+function parseSpecText(value: string) {
+  return value.split("\n").flatMap((line) => {
+    const separator = line.indexOf(":");
+    if (separator < 1) return [];
+    const label = line.slice(0, separator).trim();
+    const specValue = line.slice(separator + 1).trim();
+    return label && specValue ? [{ label, value: specValue }] : [];
+  });
+}
+
+function parseLineList(value: string) {
+  return value.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
 function ProductEditor({ product, onSaved, onCancel }: { product: Product; onSaved: () => Promise<void>; onCancel: () => void }) {
   const [draft, setDraft] = useState(product);
   const [specText, setSpecText] = useState(product.specs.map((item) => `${item.label}: ${item.value}`).join("\n"));
   const [fitmentText, setFitmentText] = useState(product.fitment.compatibility.join("\n"));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [device, setDevice] = useState(previewDevices[1]);
+  const [previewHeight, setPreviewHeight] = useState(1500);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const previewRef = useRef<Product>(product);
+  const { stageRef, scale } = usePreviewScale(device.width);
   const update = <K extends keyof Product>(key: K, value: Product[K]) => setDraft((current) => ({ ...current, [key]: value }));
+
+  // The preview parses the same textareas the save writes, so the frame shows exactly what gets stored.
+  const previewProduct = useMemo<Product>(() => ({ ...draft, finishes: draft.finishes.map((item) => item.trim()).filter(Boolean), specs: parseSpecText(specText), fitment: { ...draft.fitment, compatibility: parseLineList(fitmentText) } }), [draft, specText, fitmentText]);
+  useEffect(() => { previewRef.current = previewProduct; }, [previewProduct]);
+
+  const pushPreview = useCallback(() => {
+    frameRef.current?.contentWindow?.postMessage({ type: productPreviewProductMessage, product: previewRef.current }, window.location.origin);
+  }, []);
+
+  useEffect(() => { pushPreview(); }, [previewProduct, pushPreview]);
+
+  const handlePreviewMessage = useCallback((data: unknown) => {
+    const next = readPreviewProductHeight(data);
+    if (next) setPreviewHeight(next);
+  }, []);
 
   useEffect(() => {
     setDraft(product);
@@ -140,14 +177,7 @@ function ProductEditor({ product, onSaved, onCancel }: { product: Product; onSav
 
     setSaving(true);
     try {
-      const specs = specText.split("\n").flatMap((line) => {
-        const separator = line.indexOf(":");
-        if (separator < 1) return [];
-        const label = line.slice(0, separator).trim();
-        const value = line.slice(separator + 1).trim();
-        return label && value ? [{ label, value }] : [];
-      });
-      await saveAdminProduct({ ...draft, slug, finishes: cleanFinishes, specs, fitment: { ...draft.fitment, compatibility: fitmentText.split("\n").map((line) => line.trim()).filter(Boolean) } });
+      await saveAdminProduct({ ...draft, slug, finishes: cleanFinishes, specs: parseSpecText(specText), fitment: { ...draft.fitment, compatibility: parseLineList(fitmentText) } });
       toast.success("Shop item saved.");
       await onSaved();
     } catch (error) {
@@ -170,7 +200,7 @@ function ProductEditor({ product, onSaved, onCancel }: { product: Product; onSav
     }
   };
 
-  return <div className="border border-white/15 bg-[#111214] p-5"><div className="flex items-center justify-between border-b border-white/10 pb-4"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Catalog editor</p><h2 className="mt-1 font-display text-3xl uppercase text-white">{draft.name || "New shop item"}</h2></div><button onClick={onCancel} className="text-[10px] font-black uppercase tracking-[.14em] text-white/45 hover:text-white">Close</button></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className={labelClass}>Name<input value={draft.name} onChange={(event) => update("name", event.target.value)} className={inputClass} /></label><label className={labelClass}>Slug<input value={draft.slug} onChange={(event) => update("slug", event.target.value)} className={inputClass} placeholder="product-slug" /></label><label className={labelClass}>Category<input value={draft.category} onChange={(event) => update("category", event.target.value)} className={inputClass} /></label><label className={labelClass}>Price in PHP<input type="number" min="0" step="1" value={draft.price} onChange={(event) => update("price", Number(event.target.value))} className={inputClass} /></label><label className={labelClass}>Badge<input value={draft.badge ?? ""} onChange={(event) => update("badge", event.target.value)} className={inputClass} placeholder="Optional" /></label><label className={labelClass}>Visual<select value={draft.visual} onChange={(event) => update("visual", event.target.value as ProductVisual)} className={inputClass}>{(["hoods", "valve", "saddle", "tape", "stem", "stand"] as ProductVisual[]).map((value) => <option key={value} value={value} className="bg-[#111214]">{value}</option>)}</select></label><label className={`${labelClass} sm:col-span-2`}>Descriptor<input value={draft.descriptor} onChange={(event) => update("descriptor", event.target.value)} className={inputClass} /></label><label className={`${labelClass} sm:col-span-2`}>Description<textarea value={draft.description} onChange={(event) => update("description", event.target.value)} className={`${inputClass} min-h-24 py-3`} /></label><label className={labelClass}>Finishes, comma separated<input value={draft.finishes.join(", ")} onChange={(event) => update("finishes", event.target.value.split(",").map((value) => value.trim()).filter(Boolean))} className={inputClass} /></label><label className={labelClass}>Image URL or upload<input value={draft.image ?? ""} onChange={(event) => update("image", event.target.value)} className={inputClass} placeholder="/path/image.jpg" /><span className="mt-1 flex items-center gap-2 text-[10px] normal-case tracking-normal text-white/35"><Upload size={12} />{uploading ? "Uploading..." : "Use a Supabase asset URL or upload below"}</span></label><label className={`${labelClass} sm:col-span-2`}>Upload image<input type="file" accept="image/*" onChange={(event) => void upload(event.target.files?.[0])} className="file:mr-3 file:rounded-none file:border-0 file:bg-[#ff5a36] file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:text-black" /></label><label className={`${labelClass} sm:col-span-2`}>Specs, one per line<input value={specText} onChange={(event) => setSpecText(event.target.value)} className={`${inputClass} min-h-24 py-3`} placeholder="Fit: Road STI" /></label><label className={`${labelClass} sm:col-span-2`}>Fitment compatibility, one per line<textarea value={fitmentText} onChange={(event) => setFitmentText(event.target.value)} className={`${inputClass} min-h-24 py-3`} /></label><label className={`${labelClass} sm:col-span-2`}>Fitment headline<input value={draft.fitment.headline} onChange={(event) => update("fitment", { ...draft.fitment, headline: event.target.value })} className={inputClass} /></label><label className={`${labelClass} sm:col-span-2`}>Before you ride<input value={draft.fitment.checkBeforeRide} onChange={(event) => update("fitment", { ...draft.fitment, checkBeforeRide: event.target.value })} className={inputClass} /></label></div><div className="mt-5 flex flex-wrap items-center gap-5 border-t border-white/10 pt-5"><label className="flex items-center gap-2 text-xs text-white/65"><input type="checkbox" checked={Boolean(draft.featured)} onChange={(event) => update("featured", event.target.checked)} />Featured in the drop</label><label className="flex items-center gap-2 text-xs text-white/65"><input type="checkbox" checked={Boolean(draft.archived)} onChange={(event) => update("archived", event.target.checked)} />Archived</label><button onClick={save} disabled={saving || !draft.name.trim()} className="ml-auto inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black disabled:opacity-50">{saving ? "Saving..." : <><Save size={14} />Save item</>}</button></div></div>;
+  return <div className="border border-white/15 bg-[#111214]"><div className="flex items-center justify-between border-b border-white/10 px-5 py-4"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Catalog editor</p><h2 className="mt-1 font-display text-3xl uppercase text-white">{draft.name || "New shop item"}</h2></div><div className="flex items-center gap-4"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">{device.label} / {device.width}px / {Math.round(scale * 100)}%</p><button onClick={onCancel} className="text-[10px] font-black uppercase tracking-[.14em] text-white/45 hover:text-white">Close</button></div></div><div className="grid gap-6 p-5 2xl:grid-cols-[minmax(0,1fr)_minmax(400px,1fr)]"><div className="min-w-0"><div className="mb-3 flex flex-wrap gap-1.5">{previewDevices.map((item) => <button key={item.id} onClick={() => setDevice(item)} className={`border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[.12em] transition ${device.id === item.id ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/50 hover:border-white/50 hover:text-white"}`}>{item.label}</button>)}</div><PreviewStage src={productPreviewPath} title="Item preview" designWidth={device.width} height={previewHeight} scale={scale} stageRef={stageRef} frameRef={frameRef} readyType={productPreviewReadyMessage} onMessage={handlePreviewMessage} onReady={pushPreview} /><p className="mt-3 text-[10px] leading-4 text-white/35">The frame runs the real shop card and item view, so the editor cannot drift from the storefront. Links and cart actions stay inert here.</p></div><div className="min-w-0"><div className="grid gap-4 sm:grid-cols-2"><label className={labelClass}>Name<input value={draft.name} onChange={(event) => update("name", event.target.value)} className={inputClass} /></label><label className={labelClass}>Slug<input value={draft.slug} onChange={(event) => update("slug", event.target.value)} className={inputClass} placeholder="product-slug" /></label><label className={labelClass}>Category<input value={draft.category} onChange={(event) => update("category", event.target.value)} className={inputClass} /></label><label className={labelClass}>Price in PHP<input type="number" min="0" step="1" value={draft.price} onChange={(event) => update("price", Number(event.target.value))} className={inputClass} /></label><label className={labelClass}>Badge<input value={draft.badge ?? ""} onChange={(event) => update("badge", event.target.value)} className={inputClass} placeholder="Optional" /></label><label className={labelClass}>Visual<select value={draft.visual} onChange={(event) => update("visual", event.target.value as ProductVisual)} className={inputClass}>{(["hoods", "valve", "saddle", "tape", "stem", "stand"] as ProductVisual[]).map((value) => <option key={value} value={value} className="bg-[#111214]">{value}</option>)}</select></label><label className={`${labelClass} sm:col-span-2`}>Descriptor<input value={draft.descriptor} onChange={(event) => update("descriptor", event.target.value)} className={inputClass} /></label><label className={`${labelClass} sm:col-span-2`}>Description<textarea value={draft.description} onChange={(event) => update("description", event.target.value)} className={`${inputClass} min-h-24 py-3`} /></label><label className={labelClass}>Finishes, comma separated<input value={draft.finishes.join(", ")} onChange={(event) => update("finishes", event.target.value.split(",").map((value) => value.trim()).filter(Boolean))} className={inputClass} /></label><label className={labelClass}>Image URL or upload<input value={draft.image ?? ""} onChange={(event) => update("image", event.target.value)} className={inputClass} placeholder="/path/image.jpg" /><span className="mt-1 flex items-center gap-2 text-[10px] normal-case tracking-normal text-white/35"><Upload size={12} />{uploading ? "Uploading..." : "Use a Supabase asset URL or upload below"}</span></label><label className={`${labelClass} sm:col-span-2`}>Upload image<input type="file" accept="image/*" onChange={(event) => void upload(event.target.files?.[0])} className="file:mr-3 file:rounded-none file:border-0 file:bg-[#ff5a36] file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:text-black" /></label><label className={`${labelClass} sm:col-span-2`}>Specs, one per line<input value={specText} onChange={(event) => setSpecText(event.target.value)} className={`${inputClass} min-h-24 py-3`} placeholder="Fit: Road STI" /></label><label className={`${labelClass} sm:col-span-2`}>Fitment compatibility, one per line<textarea value={fitmentText} onChange={(event) => setFitmentText(event.target.value)} className={`${inputClass} min-h-24 py-3`} /></label><label className={`${labelClass} sm:col-span-2`}>Fitment headline<input value={draft.fitment.headline} onChange={(event) => update("fitment", { ...draft.fitment, headline: event.target.value })} className={inputClass} /></label><label className={`${labelClass} sm:col-span-2`}>Before you ride<input value={draft.fitment.checkBeforeRide} onChange={(event) => update("fitment", { ...draft.fitment, checkBeforeRide: event.target.value })} className={inputClass} /></label></div></div></div><div className="flex flex-wrap items-center gap-5 border-t border-white/10 px-5 py-4"><label className="flex items-center gap-2 text-xs text-white/65"><input type="checkbox" checked={Boolean(draft.featured)} onChange={(event) => update("featured", event.target.checked)} />Featured in the drop</label><label className="flex items-center gap-2 text-xs text-white/65"><input type="checkbox" checked={Boolean(draft.archived)} onChange={(event) => update("archived", event.target.checked)} />Archived</label><button onClick={save} disabled={saving || !draft.name.trim()} className="ml-auto inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black disabled:opacity-50">{saving ? "Saving..." : <><Save size={14} />Save item</>}</button></div></div>;
 }
 
 function ProductManager({ products, reload, notify }: { products: Product[]; reload: () => Promise<void>; notify: () => Promise<void> }) {
@@ -259,11 +289,10 @@ function HomepageEditor({ initial, products, reload, notify }: { initial: Homepa
   const [uploading, setUploading] = useState(false);
   const [pendingProduct, setPendingProduct] = useState<string | null>(null);
   const [device, setDevice] = useState(previewDevices[0]);
-  const [stageWidth, setStageWidth] = useState(0);
   const [metrics, setMetrics] = useState<HomepagePreviewMetrics>({ height: 3400, offsets: {} });
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef(content);
+  const { stageRef, scale } = usePreviewScale(device.width);
 
   const dirty = useMemo(() => (Object.keys(saved) as (keyof HomepageContent)[]).some((key) => saved[key] !== content[key]), [content, saved]);
   const dirtyRef = useRef(false);
@@ -273,7 +302,6 @@ function HomepageEditor({ initial, products, reload, notify }: { initial: Homepa
   const active = homepageSections.find((item) => item.id === section) ?? homepageSections[0];
   const selectable = useMemo(() => products.filter((product) => !product.archived), [products]);
   const inDrop = selectable.filter((product) => product.featured).length;
-  const scale = stageWidth > 0 ? Math.min(1, stageWidth / device.width) : 1;
 
   const pushDraft = useCallback(() => {
     frameRef.current?.contentWindow?.postMessage({ type: previewContentMessage, content: draftRef.current }, window.location.origin);
@@ -281,26 +309,11 @@ function HomepageEditor({ initial, products, reload, notify }: { initial: Homepa
 
   useEffect(() => { pushDraft(); }, [content, pushDraft]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (!isSameOriginMessage(event)) return;
-      if (isPreviewType(event.data, previewReadyMessage)) { pushDraft(); return; }
-      const selected = readPreviewSection(event.data);
-      if (selected) { setSection(selected); return; }
-      const next = readPreviewMetrics(event.data);
-      if (next) setMetrics(next);
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [pushDraft]);
-
-  useEffect(() => {
-    const node = stageRef.current;
-    if (!node) return;
-    setStageWidth(node.clientWidth);
-    const observer = new ResizeObserver(([entry]) => setStageWidth(entry.contentRect.width));
-    observer.observe(node);
-    return () => observer.disconnect();
+  const handlePreviewMessage = useCallback((data: unknown) => {
+    const selected = readPreviewSection(data);
+    if (selected) { setSection(selected); return; }
+    const next = readPreviewMetrics(data);
+    if (next) setMetrics(next);
   }, []);
 
   useEffect(() => {
@@ -364,13 +377,7 @@ function HomepageEditor({ initial, products, reload, notify }: { initial: Homepa
             <a href="/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 border border-white/15 px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-white/60 transition hover:border-[#ff5a36] hover:text-[#ff5a36]">Live page <ExternalLink size={13} /></a>
           </div>
         </div>
-        <div ref={stageRef} className="max-h-[68vh] overflow-x-hidden overflow-y-auto border border-white/15 bg-[#08090a]">
-          <div className="flex justify-center p-2">
-            <div className="relative shrink-0 overflow-hidden" style={{ width: Math.round(device.width * scale), height: Math.round(metrics.height * scale) }}>
-              <iframe ref={frameRef} src={homepagePreviewPath} title="Homepage preview" className="absolute left-0 top-0 origin-top-left border-0 bg-[#0c0d0e]" style={{ width: device.width, height: metrics.height, transform: `scale(${scale})` }} />
-            </div>
-          </div>
-        </div>
+        <PreviewStage src={homepagePreviewPath} title="Homepage preview" designWidth={device.width} height={metrics.height} scale={scale} stageRef={stageRef} frameRef={frameRef} readyType={previewReadyMessage} onMessage={handlePreviewMessage} onReady={pushDraft} />
         <p className="text-[10px] leading-4 text-white/35">Outlined sections are editable. Dashed outlines and “fixed section” tags are built into the storefront code.</p>
       </div>
       <div className="min-w-0 self-start border border-white/15 bg-[#111214]">
