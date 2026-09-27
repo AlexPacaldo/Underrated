@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { Archive, ArrowLeft, Check, ExternalLink, ImagePlus, LayoutDashboard, Package, Save, ShieldCheck, Undo2, Upload, Users } from "lucide-react";
+import { Archive, ArrowLeft, Check, ExternalLink, ImagePlus, LayoutDashboard, Package, Save, ShieldCheck, Truck, Undo2, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 import PreviewStage from "@/components/admin/PreviewStage";
 import OrderTimeline from "@/components/account/OrderTimeline";
@@ -18,6 +18,7 @@ import { buildOrderTimeline, countOrdersByFilter, orderFilters, orderMatchesFilt
 import { homepagePreviewPath, previewContentMessage, previewReadyMessage, previewRefreshMessage, readPreviewMetrics, readPreviewSection, type HomepagePreviewMetrics } from "@/lib/homepagePreview";
 import { productPreviewFields, productPreviewPath, productPreviewProductMessage, productPreviewReadyMessage, readPreviewField, readPreviewProductHeight, type ProductPreviewField } from "@/lib/productPreview";
 import { fetchAdminHomepage, fetchAdminOrders, fetchAdminProducts, fetchAdminProfiles, saveAdminHomepage, saveAdminProduct, setAdminProductArchived, setAdminProductFeatured, setAdminProfileRole, updateAdminOrderStatus, uploadStorefrontAsset, type AdminOrder, type AdminOrderStatus, type AdminProfile } from "@/lib/admin";
+import { bookOrderShipment } from "@/lib/logistics";
 
 type Section = "overview" | "orders" | "products" | "homepage" | "roles";
 
@@ -35,6 +36,9 @@ const nextStatuses: Partial<Record<AdminOrderStatus, AdminOrderStatus[]>> = {
   paid: ["processing", "cancelled"],
   processing: ["shipped", "cancelled"],
   shipped: ["delivered", "cancelled"],
+  // A returned parcel goes back to processing so a replacement can be booked.
+  // Catching it remains available from the general rule in the database.
+  returned: ["processing", "cancelled"],
 };
 
 const inputClass = "h-10 w-full rounded-none border border-white/15 bg-[#101113] px-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#ff5a36]";
@@ -58,6 +62,18 @@ function OrderCard({ order, customer, onUpdated }: { order: AdminOrder; customer
   const [adminNote, setAdminNote] = useState(order.admin_note ?? "");
   const [saving, setSaving] = useState(false);
 
+  // Parcel measurements. The catalogue keeps a display weight in a spec blob, not
+  // a shipping weight, so this is staff input rather than something derived.
+  const [parcel, setParcel] = useState({ weightKg: "", lengthCm: "40", widthCm: "30", heightCm: "20" });
+  const [booking, setBooking] = useState(false);
+  const [waybill, setWaybill] = useState<{ awb: string; url: string | null } | null>(null);
+
+  // A parcel can only be booked once payment has cleared, and only for a
+  // Philippine address, because Bigate is a domestic courier. The server enforces
+  // both of these again; hiding the button is a courtesy, not the control.
+  const canBook = order.status === "paid" || order.status === "processing";
+  const domestic = order.shipping_address?.country_code === "PH";
+
   useEffect(() => {
     setStatus(order.status);
     setFulfillmentNote(order.fulfillment_note ?? "");
@@ -76,6 +92,28 @@ function OrderCard({ order, customer, onUpdated }: { order: AdminOrder; customer
     rejectedAt: order.rejected_at,
     trackingNumber: order.tracking_number,
   });
+
+  const book = async () => {
+    setBooking(true);
+    try {
+      const result = await bookOrderShipment(order.order_number, {
+        weightKg: Number(parcel.weightKg),
+        lengthCm: Number(parcel.lengthCm),
+        widthCm: Number(parcel.widthCm),
+        heightCm: Number(parcel.heightCm),
+      });
+      // The waybill is written to the order server-side; filling the field keeps
+      // the form honest if the save is deferred.
+      setTrackingNumber(result.awb);
+      setWaybill({ awb: result.awb, url: result.waybillUrl });
+      toast.success("Shipment booked", { description: `${result.awb} via ${result.courierCode}. Tracking updates from the courier's callbacks.` });
+      await onUpdated();
+    } catch (error) {
+      toast.error("Could not book shipment.", { description: error instanceof Error ? error.message : "Try again." });
+    } finally {
+      setBooking(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -109,6 +147,19 @@ function OrderCard({ order, customer, onUpdated }: { order: AdminOrder; customer
       <OrderTimeline className="mt-3" timeline={timeline} />
     </div>
     {order.manual_payment_submissions.length > 0 ? <div className="mt-4 border border-white/10 p-3 text-xs text-white/55"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">Payment references</p>{order.manual_payment_submissions.map((submission) => <p key={submission.id} className="mt-2">{submission.payment_method.replace("_", " ")} · <span className="font-bold text-white">{submission.reference_number}</span> · {formatDate(submission.created_at)}</p>)}</div> : null}
+    {canBook && domestic ? <div className="mt-4 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-4">
+      <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Book a Bigate parcel</p>
+      <p className="mt-2 text-xs leading-5 text-white/50">Books a waybill with Bigate and starts tracking for this order. The address, recipient and items come from the order, so only the measurements below are needed.</p>
+      {waybill ? <p className="mt-3 text-xs text-white/70">Booked <span className="font-bold text-white">{waybill.awb}</span>.{waybill.url ? <> <a href={waybill.url} target="_blank" rel="noreferrer" className="underline">Open label</a></> : ""}</p> : null}
+      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+        <label className={labelClass}>Weight (kg)<input type="number" min="0.1" step="0.1" value={parcel.weightKg} onChange={(event) => setParcel({ ...parcel, weightKg: event.target.value })} className={inputClass} placeholder="2.5" /></label>
+        <label className={labelClass}>Length (cm)<input type="number" min="1" step="1" value={parcel.lengthCm} onChange={(event) => setParcel({ ...parcel, lengthCm: event.target.value })} className={inputClass} /></label>
+        <label className={labelClass}>Width (cm)<input type="number" min="1" step="1" value={parcel.widthCm} onChange={(event) => setParcel({ ...parcel, widthCm: event.target.value })} className={inputClass} /></label>
+        <label className={labelClass}>Height (cm)<input type="number" min="1" step="1" value={parcel.heightCm} onChange={(event) => setParcel({ ...parcel, heightCm: event.target.value })} className={inputClass} /></label>
+      </div>
+      <button onClick={book} disabled={booking || parcel.weightKg === ""} className="mt-3 inline-flex h-10 items-center justify-center gap-2 border border-[#ff5a36] px-4 text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36] disabled:opacity-50">{booking ? "Booking..." : <><Truck size={14} />Book shipment</>}</button>
+      <p className="mt-2 text-[10px] leading-4 text-white/35">Creates a real courier label. If the request times out, check Bigate before trying again.</p>
+    </div> : canBook && !domestic ? <p className="mt-4 border border-white/10 p-3 text-[10px] leading-4 text-white/40">This order ships outside the Philippines. Bigate is a domestic courier, so book an international service instead.</p> : null}
     <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 sm:grid-cols-2"><label className={labelClass}>Status<select value={status} onChange={(event) => setStatus(event.target.value as AdminOrderStatus)} disabled={available.length === 0} className={`${inputClass} disabled:opacity-50`}>{statusOptions.map((item) => <option key={item} value={item} className="bg-[#111214]">{orderStatusLabels[item]}</option>)}</select></label><label className={labelClass}>Tracking number<input value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} className={inputClass} placeholder="Optional" /></label><label className={labelClass}>Fulfillment note<input value={fulfillmentNote} onChange={(event) => setFulfillmentNote(event.target.value)} className={inputClass} placeholder="Shown to the rider" /></label><label className={labelClass}>Admin note<input value={adminNote} onChange={(event) => setAdminNote(event.target.value)} className={inputClass} placeholder="Internal only" /></label><button onClick={save} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 bg-[#ff5a36] px-4 text-[10px] font-black uppercase tracking-[.14em] text-black disabled:opacity-50 sm:col-span-2">{saving ? "Saving..." : <><Save size={14} />{status === order.status ? "Save details" : `Mark ${orderStatusLabels[status].toLowerCase()}`}</>}</button><p className="text-[10px] leading-4 text-white/35 sm:col-span-2">{available.length === 0 ? "This order is closed. You can still record tracking and internal notes." : "Leave the status unchanged to save tracking or notes only."}</p></div>
   </article>;
 }

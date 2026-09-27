@@ -12,6 +12,9 @@ const tones: Record<OrderStatus, string> = {
   delivered: "border-white/15 text-white/45",
   rejected: "border-white/15 text-white/40",
   cancelled: "border-white/15 text-white/40",
+  // Amber rather than the muted grey of a cancelled order: the parcel is coming
+  // back and the rider is expected to do something about it.
+  returned: "border-amber-500/50 text-amber-400",
 };
 
 export default function OrderStatusBadge({ status, className }: { status: OrderStatus; className?: string }) {

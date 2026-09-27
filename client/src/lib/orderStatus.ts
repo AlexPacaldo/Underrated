@@ -3,7 +3,7 @@
  * console describe the same shipment the same way.
  */
 
-export type OrderStatus = "pending_payment" | "payment_submitted" | "paid" | "rejected" | "cancelled" | "processing" | "shipped" | "delivered";
+export type OrderStatus = "pending_payment" | "payment_submitted" | "paid" | "rejected" | "cancelled" | "processing" | "shipped" | "delivered" | "returned";
 
 export const orderStatusLabels: Record<OrderStatus, string> = {
   pending_payment: "Pending payment",
@@ -14,6 +14,10 @@ export const orderStatusLabels: Record<OrderStatus, string> = {
   processing: "Processing",
   shipped: "Shipped",
   delivered: "Delivered",
+  // Set by the courier callback when a parcel comes back to the workshop. It is
+  // not a failure of payment, so it is described in its own words rather than as
+  // a rejection.
+  returned: "Returned to sender",
 };
 
 /** Short line used in the admin console, where the full label crowds the row. */
@@ -26,9 +30,14 @@ export const orderStatusShortLabels: Record<OrderStatus, string> = {
   processing: "Processing",
   shipped: "Shipped",
   delivered: "Delivered",
+  returned: "Returned",
 };
 
-/** How far along the happy path an order is. A rejected or cancelled order stops counting. */
+/**
+ * How far along the happy path an order is. A rejected, cancelled or returned
+ * order stops counting. `returned` ranks 1 because the parcel is back with the
+ * workshop and has to be dealt with, not because the rider paid and we failed.
+ */
 const stageByStatus: Record<OrderStatus, number> = {
   pending_payment: 0,
   payment_submitted: 1,
@@ -38,6 +47,7 @@ const stageByStatus: Record<OrderStatus, number> = {
   delivered: 4,
   rejected: -1,
   cancelled: -1,
+  returned: 1,
 };
 
 export const orderStatuses: OrderStatus[] = [
@@ -49,6 +59,7 @@ export const orderStatuses: OrderStatus[] = [
   "delivered",
   "rejected",
   "cancelled",
+  "returned",
 ];
 
 export type OrderFilter = "all" | "to_pay" | "to_ship" | "to_receive" | "completed" | "cancelled";
@@ -63,7 +74,7 @@ export type OrderFilterDefinition = {
 export const orderFilters: OrderFilterDefinition[] = [
   { id: "all", label: "All", statuses: orderStatuses },
   { id: "to_pay", label: "To Pay", statuses: ["pending_payment"] },
-  { id: "to_ship", label: "To Ship", statuses: ["payment_submitted", "paid", "processing"] },
+  { id: "to_ship", label: "To Ship", statuses: ["payment_submitted", "paid", "processing", "returned"] },
   { id: "to_receive", label: "To Receive", statuses: ["shipped"] },
   { id: "completed", label: "Completed", statuses: ["delivered"] },
   { id: "cancelled", label: "Cancelled", statuses: ["cancelled", "rejected"] },
