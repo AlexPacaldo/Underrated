@@ -3,15 +3,18 @@ import { mapHomepage, mapProduct } from "@/contexts/CatalogContext";
 import type { HomepageContent } from "@/data/storefront";
 import { normalizeImagePositions, type Product } from "@/data/products";
 import type { DeliveryAddress } from "@/lib/deliveryAddress";
+import type { OrderStatus } from "@/lib/orderStatus";
 import { supabase } from "@/lib/supabase";
 
-export type AdminOrderStatus = "pending_payment" | "payment_submitted" | "paid" | "rejected" | "cancelled" | "processing" | "shipped" | "delivered";
+export type AdminOrderStatus = OrderStatus;
 
 export type AdminOrder = {
   id: string;
   order_number: string;
   user_id: string;
   status: AdminOrderStatus;
+  subtotal_cents: number;
+  shipping_cents: number;
   total_cents: number;
   currency: string;
   display_currency: string;
@@ -21,6 +24,11 @@ export type AdminOrder = {
   fulfillment_note: string | null;
   tracking_number: string | null;
   admin_note: string | null;
+  paid_at: string | null;
+  processing_at: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  rejected_at: string | null;
   created_at: string;
   updated_at: string;
   order_items: { id: string; product_name: string; finish: string; quantity: number; line_total_cents: number }[];
@@ -40,6 +48,11 @@ export type AdminOrderFulfillment = {
   tracking_number: string | null;
   fulfillment_note: string | null;
   admin_note: string | null;
+  paid_at: string | null;
+  processing_at: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  rejected_at: string | null;
 };
 
 export async function fetchAdminOrders() {
@@ -47,20 +60,25 @@ export async function fetchAdminOrders() {
   const [orderResult, fulfillmentResult] = await Promise.all([
     supabase
       .from("orders")
-      .select("id,order_number,user_id,status,total_cents,currency,display_currency,fx_rate,shipping_region,shipping_address,created_at,updated_at,order_items(id,product_name,finish,quantity,line_total_cents),manual_payment_submissions(id,payment_method,reference_number,payer_name,created_at)")
+      .select("id,order_number,user_id,status,subtotal_cents,shipping_cents,total_cents,currency,display_currency,fx_rate,shipping_region,shipping_address,created_at,updated_at,order_items(id,product_name,finish,quantity,line_total_cents),manual_payment_submissions(id,payment_method,reference_number,payer_name,created_at)")
       .order("created_at", { ascending: false }),
-    supabase.from("order_fulfillment").select("order_id,tracking_number,fulfillment_note,admin_note"),
+    supabase.from("order_fulfillment").select("order_id,tracking_number,fulfillment_note,admin_note,paid_at,processing_at,shipped_at,delivered_at,rejected_at"),
   ]);
   if (orderResult.error) throw orderResult.error;
   if (fulfillmentResult.error) throw fulfillmentResult.error;
   const fulfillment = new Map<string, AdminOrderFulfillment>((fulfillmentResult.data ?? []).map((row) => [row.order_id, row] as const));
-  return ((orderResult.data ?? []) as Omit<AdminOrder, "tracking_number" | "fulfillment_note" | "admin_note">[]).map((order) => {
+  return ((orderResult.data ?? []) as Omit<AdminOrder, "tracking_number" | "fulfillment_note" | "admin_note" | "paid_at" | "processing_at" | "shipped_at" | "delivered_at" | "rejected_at">[]).map((order) => {
     const detail = fulfillment.get(order.id);
     return {
       ...order,
       tracking_number: detail?.tracking_number ?? null,
       fulfillment_note: detail?.fulfillment_note ?? null,
       admin_note: detail?.admin_note ?? null,
+      paid_at: detail?.paid_at ?? null,
+      processing_at: detail?.processing_at ?? null,
+      shipped_at: detail?.shipped_at ?? null,
+      delivered_at: detail?.delivered_at ?? null,
+      rejected_at: detail?.rejected_at ?? null,
     } as AdminOrder;
   });
 }

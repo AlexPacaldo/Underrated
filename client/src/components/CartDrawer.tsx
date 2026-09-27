@@ -4,15 +4,15 @@
 import { useCatalog } from "@/contexts/CatalogContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAddressBook } from "@/contexts/AddressBookContext";
 import DeliveryAddressForm from "@/components/DeliveryAddressForm";
 import { Checkbox } from "@/components/ui/checkbox";
 import { emptyDeliveryAddress, formatDeliveryAddress, isValidDeliveryAddress, normalizeDeliveryAddress, shippingRegionForAddress, type DeliveryAddress, type ShippingRegion } from "@/lib/deliveryAddress";
 import { useStore } from "@/contexts/StoreContext";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { createManualOrder, submitManualPayment, type ManualOrder, type ManualPaymentMethod } from "@/lib/manualOrders";
-import { Banknote, MapPin, Minus, PackageCheck, Plus, QrCode, X } from "lucide-react";
+import PaymentReferenceForm from "@/components/PaymentReferenceForm";
+import { MapPin, Minus, PackageCheck, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import ProductVisual from "@/components/ProductVisual";
@@ -24,22 +24,17 @@ const shippingRegions: { value: ShippingRegion; label: string; timing: string }[
   { value: "international", label: "International", timing: "10–18 business days" },
 ];
 
-const paymentDetails = {
-  gcashName: import.meta.env.VITE_GCASH_ACCOUNT_NAME || "Set VITE_GCASH_ACCOUNT_NAME",
-  gcashNumber: import.meta.env.VITE_GCASH_ACCOUNT_NUMBER || "Set VITE_GCASH_ACCOUNT_NUMBER",
-  gcashQr: import.meta.env.VITE_GCASH_QR_IMAGE_URL || "",
-  bankName: import.meta.env.VITE_BANK_NAME || "Set VITE_BANK_NAME",
-  bankAccountName: import.meta.env.VITE_BANK_ACCOUNT_NAME || "Set VITE_BANK_ACCOUNT_NAME",
-  bankAccountNumber: import.meta.env.VITE_BANK_ACCOUNT_NUMBER || "Set VITE_BANK_ACCOUNT_NUMBER",
-};
-
 export default function CartDrawer() {
-  const { user, profile, isConfigured, signInWithGoogle, saveDefaultAddress } = useAuth();
+  const { user, isConfigured, signInWithGoogle } = useAuth();
+  const { addresses, addAddress } = useAddressBook();
   const { products } = useCatalog();
   const { currency, rate, rateReady, formatMoney } = useCurrency();
   const { cart, cartOpen, closeCart, subtotal, updateQuantity, removeLine, clearCart } = useStore();
   const [deliveryAddress, setDeliveryAddress] = useState<DeliveryAddress>(emptyDeliveryAddress);
   const [addressMode, setAddressMode] = useState<"saved" | "new">("new");
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
+  const [addressLabel, setAddressLabel] = useState("");
+  const [saveToAddressBook, setSaveToAddressBook] = useState(false);
   const [saveAsDefault, setSaveAsDefault] = useState(true);
   const [addressError, setAddressError] = useState<string | null>(null);
   const [manualOrder, setManualOrder] = useState<ManualOrder | null>(null);
@@ -49,21 +44,26 @@ export default function CartDrawer() {
   const [paymentNote, setPaymentNote] = useState("");
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [submittingPayment, setSubmittingPayment] = useState(false);
-  const savedAddress = profile && user && profile.id === user.id ? profile.default_shipping_address : null;
-  const normalizedSavedAddress = savedAddress ? normalizeDeliveryAddress(savedAddress) : null;
-  const hasSavedAddress = Boolean(normalizedSavedAddress && isValidDeliveryAddress(normalizedSavedAddress));
+  const defaultAddressId = addresses.find((address) => address.is_default)?.id ?? addresses[0]?.id ?? null;
+  const selectedAddress = addresses.find((address) => address.id === selectedAddressId) ?? null;
+  const savedAddress = selectedAddress ? normalizeDeliveryAddress(selectedAddress) : null;
+  const hasSavedAddress = Boolean(savedAddress && isValidDeliveryAddress(savedAddress));
   const savedAddressKey = savedAddress ? JSON.stringify(savedAddress) : null;
+
+  useEffect(() => {
+    setSelectedAddressId(defaultAddressId);
+  }, [defaultAddressId, user?.id]);
 
   useEffect(() => {
     const nextSavedAddress = savedAddressKey ? normalizeDeliveryAddress(savedAddress) : null;
     if (nextSavedAddress && isValidDeliveryAddress(nextSavedAddress)) {
       setDeliveryAddress(nextSavedAddress);
       setAddressMode("saved");
-      setSaveAsDefault(false);
+      setSaveToAddressBook(false);
     } else {
       setDeliveryAddress(emptyDeliveryAddress);
       setAddressMode("new");
-      setSaveAsDefault(true);
+      setSaveToAddressBook(addresses.length === 0);
     }
     setAddressError(null);
   }, [savedAddressKey, user?.id]);
@@ -77,7 +77,7 @@ export default function CartDrawer() {
     setAddressError(null);
   }, [user?.id]);
 
-  const activeAddress = addressMode === "saved" && normalizedSavedAddress && hasSavedAddress ? normalizedSavedAddress : deliveryAddress;
+  const activeAddress = addressMode === "saved" && savedAddress && hasSavedAddress ? savedAddress : deliveryAddress;
   const addressIsValid = isValidDeliveryAddress(activeAddress);
   const activeShippingRegion = shippingRegionForAddress(activeAddress);
   const selectedRegion = shippingRegions.find((region) => region.value === activeShippingRegion) ?? shippingRegions[shippingRegions.length - 1];
@@ -101,25 +101,17 @@ export default function CartDrawer() {
     setAddressError(null);
   };
 
-  const handleUseSavedAddress = () => {
-    if (!normalizedSavedAddress || !hasSavedAddress) return;
-    setDeliveryAddress(normalizedSavedAddress);
+  const handleSelectSavedAddress = (id: string) => {
+    setSelectedAddressId(id);
     setAddressMode("saved");
-    setSaveAsDefault(false);
-    setAddressError(null);
-  };
-
-  const handleEditAddress = () => {
-    setDeliveryAddress(normalizedSavedAddress ?? emptyDeliveryAddress);
-    setAddressMode("new");
-    setSaveAsDefault(true);
+    setSaveToAddressBook(false);
     setAddressError(null);
   };
 
   const handleUseDifferentAddress = () => {
     setDeliveryAddress(emptyDeliveryAddress);
     setAddressMode("new");
-    setSaveAsDefault(false);
+    setSaveToAddressBook(true);
     setAddressError(null);
   };
 
@@ -150,7 +142,7 @@ export default function CartDrawer() {
       return;
     }
 
-    const address = normalizeDeliveryAddress(addressMode === "saved" ? normalizedSavedAddress : deliveryAddress);
+    const address = normalizeDeliveryAddress(addressMode === "saved" ? savedAddress : deliveryAddress);
     if (!isValidDeliveryAddress(address)) {
       setAddressError("Enter the required delivery address fields before reserving the order.");
       toast.error("Delivery address needed.", { description: "Add the recipient, contact, and destination details for this order." });
@@ -159,7 +151,9 @@ export default function CartDrawer() {
 
     setCreatingOrder(true);
     try {
-      if (addressMode === "new" && saveAsDefault) await saveDefaultAddress(address);
+      if (addressMode === "new" && saveToAddressBook) {
+        await addAddress({ label: addressLabel, address, isDefault: saveAsDefault || addresses.length === 0 });
+      }
 
       const order = await createManualOrder({ cart, shippingRegion: shippingRegionForAddress(address), shippingAddress: address, displayCurrency: currency, fxRate: rate });
       setManualOrder(order);
@@ -237,26 +231,66 @@ export default function CartDrawer() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/55"><MapPin size={14} className="text-[#ff5a36]" />Delivery address</p>
-                    <p className="mt-1 text-xs text-white/40">Tell us exactly where this order should go.</p>
+                    <p className="mt-1 text-xs text-white/40">Pick a saved address or type a new one.</p>
                   </div>
-                  {hasSavedAddress && addressMode === "saved" ? <button type="button" onClick={handleEditAddress} className="shrink-0 text-[10px] font-black uppercase tracking-[0.12em] text-[#ff5a36] hover:text-white">Change</button> : null}
                 </div>
+                {addresses.length > 0 ? (
+                  <div className="mt-4 grid gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/35">Saved addresses</p>
+                    {addresses.map((row) => {
+                      const candidate = normalizeDeliveryAddress(row);
+                      const picked = addressMode === "saved" && row.id === selectedAddressId;
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => handleSelectSavedAddress(row.id)}
+                          className={`border p-3 text-left transition ${picked ? "border-[#ff5a36] bg-[#ff5a36]/5" : "border-white/10 bg-[#101113] hover:border-white/30"}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-bold text-white">{row.label || "Delivery address"}</span>
+                            {row.is_default ? <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.12em] text-[#ff5a36]">Default</span> : null}
+                          </div>
+                          <p className="mt-1 text-xs text-white/55">{candidate.recipient_name} / {formatDeliveryAddress(candidate)}</p>
+                        </button>
+                      );
+                    })}
+                    <button type="button" onClick={handleUseDifferentAddress} className="w-fit text-[10px] font-black uppercase tracking-[0.12em] text-white/45 transition hover:text-white">
+                      Use a different address
+                    </button>
+                  </div>
+                ) : null}
+
                 {hasSavedAddress && addressMode === "saved" ? (
-                  <div className="mt-4 border border-white/10 bg-[#101113] p-3">
+                  <div className={`${addresses.length > 0 ? "mt-4" : ""} border border-white/10 bg-[#101113] p-3`}>
                     <p className="text-sm font-bold text-white">{activeAddress.recipient_name}</p>
                     <p className="mt-1 text-xs leading-5 text-white/55">{formatDeliveryAddress(activeAddress)}</p>
                     <p className="mt-1 text-xs text-white/40">{activeAddress.phone}</p>
+                    {activeAddress.delivery_instructions ? <p className="mt-1 text-xs leading-5 text-white/40">Note: {activeAddress.delivery_instructions}</p> : null}
                   </div>
-                ) : (
+                ) : addressMode === "new" ? (
                   <>
-                    {hasSavedAddress ? <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2"><button type="button" onClick={handleUseSavedAddress} className="text-[10px] font-black uppercase tracking-[0.12em] text-[#ff5a36] hover:text-white">Use saved address</button><button type="button" onClick={handleUseDifferentAddress} className="text-[10px] font-black uppercase tracking-[0.12em] text-white/45 hover:text-white">Start with a different address</button></div> : null}
-                    <DeliveryAddressForm address={deliveryAddress} onChange={handleAddressChange} />
+                    <div className="mt-4">
+                      <DeliveryAddressForm address={deliveryAddress} onChange={handleAddressChange} />
+                    </div>
                     <label className="mt-4 flex cursor-pointer items-start gap-2 text-xs leading-5 text-white/55">
-                      <Checkbox checked={saveAsDefault} onCheckedChange={(checked) => setSaveAsDefault(checked === true)} className="mt-0.5 rounded-none border-white/25 data-[state=checked]:border-[#ff5a36] data-[state=checked]:bg-[#ff5a36] data-[state=checked]:text-black" />
-                      <span>Save this as my default delivery address for future orders.</span>
+                      <Checkbox checked={saveToAddressBook} onCheckedChange={(checked) => setSaveToAddressBook(checked === true)} className="mt-0.5 rounded-none border-white/25 data-[state=checked]:border-[#ff5a36] data-[state=checked]:bg-[#ff5a36] data-[state=checked]:text-black" />
+                      <span>Save this address so I can pick it again next time.</span>
                     </label>
+                    {saveToAddressBook ? (
+                      <div className="mt-3 grid gap-3">
+                        <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white/45">
+                          <span>Label</span>
+                          <Input value={addressLabel} onChange={(event) => setAddressLabel(event.target.value)} maxLength={60} placeholder="Home, Office, Parents'" className="h-10 rounded-none border-white/15 bg-[#101113] text-sm text-white placeholder:text-white/30" />
+                        </label>
+                        <label className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-white/55">
+                          <Checkbox checked={saveAsDefault} onCheckedChange={(checked) => setSaveAsDefault(checked === true)} className="mt-0.5 rounded-none border-white/25 data-[state=checked]:border-[#ff5a36] data-[state=checked]:bg-[#ff5a36] data-[state=checked]:text-black" />
+                          <span>Make it my default delivery address.</span>
+                        </label>
+                      </div>
+                    ) : null}
                   </>
-                )}
+                ) : null}
                 {addressError ? <p className="mt-3 text-xs leading-5 text-[#ff5a36]">{addressError}</p> : null}
               </section>
             ) : (
@@ -281,37 +315,21 @@ export default function CartDrawer() {
                   </div>
                   <span className="border border-[#ff5a36]/35 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#ff5a36]">{manualOrder.status.replace("_", " ")}</span>
                 </div>
-                <p className="mt-3 text-xs leading-relaxed text-white/50">Pay the exact PHP total of <span className="font-bold text-white">{formatMoney(manualOrder.total_cents / 100, "PHP", 1)}</span>, then submit the transaction reference. The converted estimate is for display only; verification uses the PHP order total.</p>
               </div>
 
               {manualOrder.status === "pending_payment" ? (
                 <>
-                  <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as ManualPaymentMethod)}>
-                    <SelectTrigger className="h-11 rounded-none border-white/20 bg-[#151719] text-xs text-white"><SelectValue /></SelectTrigger>
-                    <SelectContent className="rounded-none border-white/15 bg-[#151719] text-white">
-                      <SelectItem value="gcash_qr" className="focus:bg-[#ff5a36] focus:text-black">GCash QR</SelectItem>
-                      <SelectItem value="bank_transfer" className="focus:bg-[#ff5a36] focus:text-black">Bank transfer</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  {paymentMethod === "gcash_qr" ? (
-                    <div className="grid gap-3 border border-white/10 p-4">
-                      <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/55"><QrCode size={14} className="text-[#ff5a36]" />GCash details</p>
-                      {paymentDetails.gcashQr ? <img src={paymentDetails.gcashQr} alt="GCash QR code" className="mx-auto aspect-square max-h-44 border border-white/10 object-contain" /> : null}
-                      <div className="grid gap-1 text-xs text-white/60"><span>Name: <strong className="text-white">{paymentDetails.gcashName}</strong></span><span>Number: <strong className="text-white">{paymentDetails.gcashNumber}</strong></span></div>
-                    </div>
-                  ) : (
-                    <div className="grid gap-2 border border-white/10 p-4 text-xs text-white/60">
-                      <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/55"><Banknote size={14} className="text-[#ff5a36]" />Bank details</p>
-                      <span>Bank: <strong className="text-white">{paymentDetails.bankName}</strong></span>
-                      <span>Name: <strong className="text-white">{paymentDetails.bankAccountName}</strong></span>
-                      <span>Account: <strong className="text-white">{paymentDetails.bankAccountNumber}</strong></span>
-                    </div>
-                  )}
-
-                  <Input value={referenceNumber} onChange={(event) => setReferenceNumber(event.target.value)} placeholder="Transaction reference number" className="h-11 rounded-none border-white/20 bg-[#151719] text-sm text-white placeholder:text-white/30" />
-                  <Input value={payerName} onChange={(event) => setPayerName(event.target.value)} placeholder="Payer name, optional" className="h-11 rounded-none border-white/20 bg-[#151719] text-sm text-white placeholder:text-white/30" />
-                  <Textarea value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} placeholder="Notes, optional" className="min-h-20 rounded-none border-white/20 bg-[#151719] text-sm text-white placeholder:text-white/30" />
+                  <PaymentReferenceForm
+                    totalCents={manualOrder.total_cents}
+                    paymentMethod={paymentMethod}
+                    onPaymentMethodChange={setPaymentMethod}
+                    referenceNumber={referenceNumber}
+                    onReferenceNumberChange={setReferenceNumber}
+                    payerName={payerName}
+                    onPayerNameChange={setPayerName}
+                    note={paymentNote}
+                    onNoteChange={setPaymentNote}
+                  />
                   <button onClick={handleSubmitPayment} disabled={submittingPayment} className="w-full bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white disabled:cursor-wait disabled:opacity-60 active:scale-[0.98]">{submittingPayment ? "Submitting..." : "Submit payment reference"}</button>
                 </>
               ) : (

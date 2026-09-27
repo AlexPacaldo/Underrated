@@ -21,7 +21,6 @@ type AuthContextValue = {
   loading: boolean;
   isConfigured: boolean;
   signInWithGoogle: (redirectTo?: string) => Promise<void>;
-  saveDefaultAddress: (address: DeliveryAddress) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -60,20 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(data as AccountProfile);
   }, []);
 
-  const saveDefaultAddress = useCallback(async (address: DeliveryAddress) => {
-    const userId = session?.user?.id;
-    if (!supabase || !userId) throw new Error("You must be signed in to save a delivery address.");
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .update({ default_shipping_address: address })
-      .eq("id", userId)
-      .select("id,email,full_name,avatar_url,role,default_shipping_address")
-      .single();
-
-    if (error) throw error;
-    if (activeProfileUserId.current === userId) setProfile(data as AccountProfile);
-  }, [session?.user?.id]);
+  // profiles.default_shipping_address is a mirror of the default row in the
+  // address book, kept in step by a database trigger. Nothing writes it from the
+  // client any more, so a save here would race the trigger and could leave the
+  // profile pointing at an address that is no longer the default.
 
   useEffect(() => {
     if (!supabase) {
@@ -127,7 +116,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       loading,
       isConfigured: Boolean(supabase),
-      saveDefaultAddress,
       signInWithGoogle: async (redirectTo = window.location.origin) => {
         if (!supabase) return;
         const { error } = await supabase.auth.signInWithOAuth({
@@ -150,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
       },
     }),
-    [loading, profile, saveDefaultAddress, session],
+    [loading, profile, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
