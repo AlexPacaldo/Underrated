@@ -1,5 +1,5 @@
--- Verifies the two Bigate logistics migrations after they have been applied.
--- Run it in the Supabase SQL editor. Everything reports through a single result
+-- Verifies the Bigate logistics migrations after they have been applied. Run it in
+-- the Supabase SQL editor. Eighteen checks, all reported through a single result
 -- set so a failure is readable without scrolling: every check is listed, and only
 -- 'FAIL' rows mean something is wrong.
 --
@@ -11,6 +11,8 @@
 -- Checks 4 to 8 are the ones that matter most. The grants are what stop a
 -- stranger from writing tracking events, and the enum and constraint are what
 -- stop a second parcel being booked for an order that is already on its way.
+-- Checks 17 and 18 report whether 20260928005000 is deployed, so a FAIL there
+-- means the shipped-at-on-first-scan migration still needs applying.
 
 with checks as (
   select
@@ -193,5 +195,35 @@ with checks as (
     -- security_invoker = off, so it runs as its owner and does not need them.
     '16. a signed-in rider can still read their tracking view',
     has_table_privilege('authenticated', 'public.order_tracking_updates', 'SELECT')
+  union all
+  select
+    -- Confirms 20260928005000 is actually deployed. Checked against pg_proc rather
+    -- than by running a scan, because this script only reads state and must not
+    -- depend on there being a probe order to hand. The shipped_at stamp below is
+    -- also asserted to be a coalesce, which is what stops a later scan from
+    -- overwriting a date staff set by hand.
+    '17. the collection scan ships the order and stamps shipped_at',
+    (
+      select p.prosrc like '%p_status = ''picked_up'' and v_applied_status = ''picked_up''%'
+        and p.prosrc like '%status in (''paid'', ''processing'')%'
+        and p.prosrc like '%set status = ''shipped''%'
+        and p.prosrc like '%shipped_at = coalesce(public.order_fulfillment.shipped_at, excluded.shipped_at)%'
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'logistics_record_tracking_event'
+    ) is true
+  union all
+  select
+    -- The guard that stops a stale replay of the collection scan from reopening an
+    -- order that the courier has already delivered. It only passes if the status
+    -- check is on the applied status, so an out-of-order scan cannot slip past it.
+    '18. a replayed collection scan cannot reopen a delivered order',
+    (
+      select p.prosrc like '%p_status = ''picked_up'' and v_applied_status = ''picked_up''%'
+        and p.prosrc not like '%p_status = ''picked_up'' and v_previous_status%'
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname = 'logistics_record_tracking_event'
+    ) is true
 )
 select check_name, passed, case when passed then 'PASS' else 'FAIL' end as result from checks order by check_name;

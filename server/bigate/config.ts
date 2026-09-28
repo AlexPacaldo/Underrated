@@ -12,6 +12,15 @@
  * reports all of them at once instead of one per restart.
  */
 import { BigateError } from "./errors";
+import {
+  DEFAULT_SIGNATURE_HEADERS,
+  DEFAULT_TOKEN_HEADERS,
+  describeWebhookAuth,
+  type DigestEncoding,
+  type HmacAlgorithm,
+  type WebhookAuthConfig,
+  type WebhookAuthMode,
+} from "./webhookAuth";
 
 export type Env = Record<string, string | undefined>;
 
@@ -35,6 +44,13 @@ export type BigateConfig = {
    * misconfiguration rather than as permission to accept anything.
    */
   webhookSecret: string | null;
+  /**
+   * How an inbound callback proves it is genuine. The scheme was never confirmed
+   * against a live Bigate account, so it is configuration rather than code: a
+   * wrong guess here rejects every callback while the rest of the store looks
+   * healthy. See server/bigate/webhookAuth.ts.
+   */
+  webhookAuth: WebhookAuthConfig;
   /** Optional CIDR-free allowlist of source IPs, comma separated, empty = allow all. */
   webhookIpAllowlist: string[];
   /** Budget for a single request including connection setup. */
@@ -92,6 +108,97 @@ function readList(env: Env, key: string): string[] {
     .filter(entry => entry.length > 0);
 }
 
+/** Comma-separated list of HTTP header names, preserving case for comparison. */
+function readHeaderList(env: Env, key: string, fallback: readonly string[]): string[] {
+  const raw = text(env, key);
+  if (!raw) return [...fallback];
+  return raw
+    .split(",")
+    .map(entry => entry.trim())
+    .filter(entry => entry.length > 0);
+}
+
+function readEnum<T extends string>(
+  env: Env,
+  key: string,
+  allowed: readonly T[],
+  fallback: T,
+  problems: string[],
+): T {
+  const raw = text(env, key).toLowerCase();
+  if (!raw) return fallback;
+  const match = allowed.find(candidate => candidate === raw);
+  if (!match) {
+    problems.push(`${key} must be one of ${allowed.join(", ")} (received "${raw}")`);
+    return fallback;
+  }
+  return match;
+}
+
+/**
+ * Reads the inbound-callback authentication settings and refuses combinations
+ * that would quietly accept unauthenticated writes.
+ *
+ * The rule that matters: a mode carrying no body credential (`ip_only`) is only
+ * allowed when there is a source allowlist to stand behind it. Configuring it
+ * otherwise is almost certainly a misunderstanding, so it is a startup error
+ * rather than a silently open endpoint.
+ */
+function readWebhookAuth(env: Env, secret: string | null, problems: string[]): WebhookAuthConfig {
+  const mode = readEnum<WebhookAuthMode>(env, "BIGATE_WEBHOOK_AUTH", ["hmac", "token", "ip_only"], "hmac", problems);
+  const algorithm = readEnum<HmacAlgorithm>(env, "BIGATE_WEBHOOK_HMAC_ALGORITHM", ["sha256", "sha1", "sha512"], "sha256", problems);
+  const encoding = readEnum<DigestEncoding>(env, "BIGATE_WEBHOOK_HMAC_ENCODING", ["hex", "base64"], "hex", problems);
+
+  const toleranceRaw = text(env, "BIGATE_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS");
+  // Disabled unless asked for, which is the opposite of the safe-looking default
+  // and deliberate. A tolerance can only be enforced if the gateway actually
+  // signs a timestamp, and a gateway that signs only the body would then have
+  // every callback rejected: tracking silently stops while the health endpoint
+  // still reports a healthy integration. Opting in is the only way to find out
+  // whether Bigate sends a timestamp without betting the whole pipeline on it.
+  let timestampToleranceSeconds: number | null = null;
+  if (toleranceRaw) {
+    const parsed = Number(toleranceRaw);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 86400) {
+      problems.push(`BIGATE_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS must be a whole number between 0 and 86400, or empty to disable (received "${toleranceRaw}")`);
+    } else if (parsed === 0) {
+      // Zero reads as "disabled" rather than "reject everything older than
+      // nothing", which is the intuitive way to turn the check off.
+      timestampToleranceSeconds = null;
+    } else {
+      timestampToleranceSeconds = parsed;
+    }
+  }
+
+  const webhookAuth: WebhookAuthConfig = {
+    mode,
+    secret,
+    algorithm,
+    encoding,
+    signatureHeaders: readHeaderList(env, "BIGATE_WEBHOOK_SIGNATURE_HEADERS", DEFAULT_SIGNATURE_HEADERS),
+    tokenHeaders: readHeaderList(env, "BIGATE_WEBHOOK_TOKEN_HEADERS", DEFAULT_TOKEN_HEADERS),
+    tokenQueryParam: text(env, "BIGATE_WEBHOOK_TOKEN_QUERY_PARAM") || "token",
+    timestampHeader: text(env, "BIGATE_WEBHOOK_TIMESTAMP_HEADER") || "x-bigate-timestamp",
+    timestampToleranceSeconds,
+    requireTimestamp: text(env, "BIGATE_WEBHOOK_REQUIRE_TIMESTAMP").toLowerCase() === "true",
+  };
+
+  if (mode === "hmac" && secret === null) {
+    problems.push("BIGATE_WEBHOOK_SECRET is required when BIGATE_WEBHOOK_AUTH is hmac (the default). Set BIGATE_WEBHOOK_AUTH=ip_only only if Bigate documents that its callbacks carry no credential, and only alongside BIGATE_WEBHOOK_IP_ALLOWLIST.");
+  }
+  if (mode === "ip_only" && webhookAuth.timestampToleranceSeconds !== null) {
+    problems.push("BIGATE_WEBHOOK_AUTH=ip_only cannot be combined with a timestamp tolerance, because ip_only reads no signed timestamp");
+  }
+  if (mode === "ip_only" && text(env, "BIGATE_WEBHOOK_IP_ALLOWLIST") === "") {
+    problems.push("BIGATE_WEBHOOK_AUTH=ip_only requires BIGATE_WEBHOOK_IP_ALLOWLIST to be set. Without it the webhook would accept writes from anyone on the internet.");
+  }
+  if (webhookAuth.requireTimestamp && timestampToleranceSeconds === null) {
+    problems.push("BIGATE_WEBHOOK_REQUIRE_TIMESTAMP=true cannot be combined with a disabled timestamp tolerance");
+  }
+
+  return webhookAuth;
+}
+
 /** Accepts an https URL only: the credential travels in a header on every call. */
 function readHttpsUrl(raw: string, key: string, problems: string[]): string {
   try {
@@ -119,6 +226,11 @@ export function loadBigateConfig(env: Env = process.env): BigateConfig {
   const supabaseServiceRoleKey = readRequired(env, "SUPABASE_SERVICE_ROLE_KEY", problems);
   const defaultCourierCode = readRequired(env, "BIGATE_DEFAULT_COURIER_CODE", problems);
 
+  // An unset secret is a configuration error, not an opt-out: the webhook route
+  // checks for null and refuses the request.
+  const webhookSecret = text(env, "BIGATE_WEBHOOK_SECRET") || null;
+  const webhookAuth = readWebhookAuth(env, webhookSecret, problems);
+
   if (bigcode.length > 0 && bigcode.length < 12) {
     problems.push("BIGATE_BIGCODE looks too short to be a real credential");
   }
@@ -136,7 +248,8 @@ export function loadBigateConfig(env: Env = process.env): BigateConfig {
     accountId,
     // An unset secret is a configuration error, not an opt-out: the webhook route
     // checks for null and refuses the request.
-    webhookSecret: text(env, "BIGATE_WEBHOOK_SECRET") || null,
+    webhookSecret,
+    webhookAuth,
     webhookIpAllowlist: readList(env, "BIGATE_WEBHOOK_IP_ALLOWLIST"),
     requestTimeoutMs: readInteger(env, "BIGATE_REQUEST_TIMEOUT_MS", 15000, { min: 1000, max: 120000 }, problems),
     retryAttempts: readInteger(env, "BIGATE_RETRY_ATTEMPTS", 2, { min: 1, max: 5 }, problems),
@@ -184,6 +297,7 @@ export function describeBigateConfig(config: BigateConfig): Record<string, unkno
     auth_scheme: config.authScheme,
     bigcode_present: config.bigcode.length > 0,
     webhook_signature_configured: config.webhookSecret !== null,
+    webhook_auth: describeWebhookAuth(config.webhookAuth),
     webhook_ip_allowlist_size: config.webhookIpAllowlist.length,
     request_timeout_ms: config.requestTimeoutMs,
     retry_attempts: config.retryAttempts,

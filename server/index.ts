@@ -2,7 +2,7 @@ import express, { type Request, type Response } from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { captureRawBody, createLogisticsRouter } from "./routes/logistics";
+import { captureRawBody, createLogisticsRouter, LOGISTICS_ROUTES_VERSION } from "./routes/logistics";
 import { describeBigateConfig, getBigateConfig, isProduction } from "./bigate/config";
 import { isBigateError } from "./bigate/errors";
 import type { Logger } from "./bigate/client";
@@ -83,8 +83,11 @@ async function startServer() {
 
 function logLogisticsStatus(target: Logger): void {
   try {
-    target.info({ ...describeBigateConfig(getBigateConfig()) }, "Bigate integration configured");
-    if (getBigateConfig().webhookSecret === null) {
+    const config = getBigateConfig();
+    target.info({ routes_version: LOGISTICS_ROUTES_VERSION, ...describeBigateConfig(config) }, "Bigate integration configured");
+    // Warning rather than an error, and only for the mode that actually needs a
+    // secret: ip_only deliberately has none and stands on the allowlist instead.
+    if (config.webhookAuth.mode !== "ip_only" && config.webhookSecret === null) {
       target.error({}, "BIGATE_WEBHOOK_SECRET is not set: the tracking webhook will answer 503 and refuse every event");
     }
   } catch (error) {

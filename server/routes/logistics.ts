@@ -25,15 +25,26 @@
  *    log with a request id, so a bad event can be traced without leaking internal
  *    detail to whoever is calling the endpoint.
  */
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { describeBigateConfig, getBigateConfig, type BigateConfig } from "../bigate/config";
 import { BigateError, isBigateError } from "../bigate/errors";
 import { BigateClient, type Logger } from "../bigate/client";
 import { getServiceClient, applyTrackingEvent } from "../bigate/store";
 import { formatTransitionLog, parseTrackingEvent, type TrackingEvent } from "../bigate/tracking";
+import { authenticateWebhook } from "../bigate/webhookAuth";
 import { requireAdmin, type AdminActor } from "../bigate/adminAuth";
 import { bookOrderShipment, type BookingInput } from "../logistics/booking";
+
+/**
+ * Identifies this build of the logistics routes in /health.
+ *
+ * It exists to answer one operational question without reading the source: is the
+ * deployed process actually running the code I think it is? A stale deploy is the
+ * failure mode that costs the most time here, because the new routes simply 404
+ * and the health endpoint keeps reporting a green configuration.
+ */
+export const LOGISTICS_ROUTES_VERSION = "2026-09-28.1";
 
 /** Raw bodies, keyed by request. WeakMap so nothing is retained after the request. */
 const rawBodies = new WeakMap<Request, Buffer>();
@@ -131,10 +142,19 @@ export function createLogisticsRouter(options: LogisticsRouteOptions): Router {
   router.get("/logistics/health", (_req: Request, res: Response) => {
     try {
       const config = getBigateConfig();
-      res.status(200).json({ configured: true, ...describeBigateConfig(config) });
+      res.status(200).json({
+        configured: true,
+        // If this does not match the version in the repository, the process is
+        // running an older build and the webhook route may not exist yet.
+        routes_version: LOGISTICS_ROUTES_VERSION,
+        ...describeBigateConfig(config),
+      });
     } catch (error) {
+      // Misconfiguration is reported in full, because the person reading this is
+      // the operator trying to fix the deployment. No secret value appears in
+      // the error text: the config validator names variables, never their values.
       const message = isBigateError(error) ? error.userMessage : "The logistics integration is misconfigured.";
-      res.status(503).json({ configured: false, detail: message });
+      res.status(503).json({ configured: false, routes_version: LOGISTICS_ROUTES_VERSION, detail: message });
     }
   });
 
@@ -158,17 +178,18 @@ export function createLogisticsRouter(options: LogisticsRouteOptions): Router {
       return;
     }
 
-    if (config.webhookSecret === null) {
-      options.logger.error({ request_id: requestId }, "Bigate webhook rejected: BIGATE_WEBHOOK_SECRET is not set, refusing unauthenticated writes");
-      res.status(503).json({ ok: false, code: "webhook_secret_missing" });
+    // 2. Source allowlist. Checked before anything else and required outright in
+    //    ip_only mode, where it is the only thing authenticating the caller. The
+    //    config validator already refuses ip_only without one, so an empty
+    //    allowlist here means the process is running a build that skipped it.
+    const clientIp = clientIpOf(req);
+    const allowlistConfigured = config.webhookIpAllowlist.length > 0;
+    if (!allowlistConfigured && config.webhookAuth.mode === "ip_only") {
+      options.logger.error({ request_id: requestId, client_ip: clientIp }, "Bigate webhook rejected: ip_only mode with no source allowlist");
+      res.status(503).json({ ok: false, code: "ip_allowlist_missing" });
       return;
     }
-
-    // 2. Source allowlist, when one is configured. Bigate publishes its IP ranges;
-    //    an allowlist turns a leaked secret from "anyone can write" into
-    //    "someone with the secret and a Bigate address can write".
-    const clientIp = clientIpOf(req);
-    if (config.webhookIpAllowlist.length > 0 && !config.webhookIpAllowlist.includes(clientIp)) {
+    if (allowlistConfigured && !config.webhookIpAllowlist.includes(clientIp)) {
       options.logger.warn({ request_id: requestId, client_ip: clientIp }, "Bigate webhook rejected: source address is not on the allowlist");
       res.status(403).json({ ok: false, code: "ip_not_allowed" });
       return;
@@ -181,10 +202,24 @@ export function createLogisticsRouter(options: LogisticsRouteOptions): Router {
       return;
     }
 
-    // 4. Signature over the raw bytes, in constant time.
+    // 4. Authenticate the sender. The scheme is configuration, not code, because
+    //    it was written against a guess: see server/bigate/webhookAuth.ts.
     const rawBody = rawBodies.get(req) ?? Buffer.alloc(0);
-    if (!verifySignature(rawBody, headerOr(req, SIGNATURE_HEADER), config.webhookSecret)) {
-      options.logger.warn({ request_id: requestId, client_ip: clientIp, bytes: rawBody.length }, "Bigate webhook rejected: signature did not verify");
+    const auth = authenticateWebhook(
+      rawBody,
+      req.headers as Record<string, string | string[] | undefined>,
+      req.query as Record<string, unknown>,
+      config.webhookAuth,
+      now(),
+    );
+
+    if (!auth.ok) {
+      // The reason is logged, not returned: it names the header we expected, and
+      // that is a free description of our own defences.
+      options.logger.warn(
+        { request_id: requestId, client_ip: clientIp, bytes: rawBody.length, reason: auth.reason, mode: config.webhookAuth.mode },
+        "Bigate webhook rejected: sender could not be authenticated",
+      );
       res.status(401).json({ ok: false, code: "bad_signature" });
       return;
     }
@@ -228,42 +263,6 @@ export function createLogisticsRouter(options: LogisticsRouteOptions): Router {
   });
 
   return router;
-}
-
-/**
- * Constant-time HMAC-SHA256 comparison.
- *
- * Accepts both `sha256=<hex>` and a bare hex digest, and an optional `t=<unix>,`
- * prefix some gateways add, because the header format is one of the things to
- * confirm against the account documentation.
- */
-export function verifySignature(body: Buffer, header: string | null, secret: string): boolean {
-  if (!header) return false;
-
-  const digest = createHmac("sha256", secret).update(body).digest();
-  const candidates = extractCandidateDigests(header);
-  if (candidates.length === 0) return false;
-
-  // Every candidate is compared, so the work does not depend on which one matched.
-  let matched = false;
-  for (const candidate of candidates) {
-    if (candidate.length !== digest.length) continue;
-    if (timingSafeEqual(candidate, digest)) matched = true;
-  }
-  return matched;
-}
-
-function extractCandidateDigests(header: string): Buffer[] {
-  const parts = header.split(",");
-  const digests: Buffer[] = [];
-  for (const part of parts) {
-    const segment = part.split("=");
-    const value = (segment.length > 1 ? segment[1] : segment[0]).trim();
-    // Skip timestamp prefixes such as "t=1750000000".
-    if (!/^[a-f0-9]{64}$/i.test(value)) continue;
-    digests.push(Buffer.from(value, "hex"));
-  }
-  return digests;
 }
 
 function headerOr(req: Request, name: string): string | null {
