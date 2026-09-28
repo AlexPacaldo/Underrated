@@ -11,6 +11,7 @@ import { emptyDeliveryAddress, formatDeliveryAddress, isValidDeliveryAddress, no
 import { useStore } from "@/contexts/StoreContext";
 import { Input } from "@/components/ui/input";
 import { createManualOrder, submitManualPayment, type ManualOrder, type ManualPaymentMethod } from "@/lib/manualOrders";
+import { paymentMethodLabels } from "@/lib/accountOrders";
 import PaymentReferenceForm from "@/components/PaymentReferenceForm";
 import { MapPin, Minus, PackageCheck, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -168,7 +169,7 @@ export default function CartDrawer() {
 
   const handleSubmitPayment = async () => {
     if (!manualOrder || !referenceNumber.trim()) {
-      toast.error("Reference number required.", { description: "Enter the GCash or bank transaction reference before submitting." });
+      toast.error("Reference number required.", { description: `Enter the ${paymentMethodLabels[paymentMethod]} transaction reference before submitting.` });
       return;
     }
 

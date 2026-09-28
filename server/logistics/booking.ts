@@ -12,10 +12,10 @@
  * the caller. That means a compromised or careless admin client cannot redirect
  * a parcel, and it means a replayed request books the address the rider gave.
  *
- * A note on cash on delivery: this store's payment methods are gcash and bank
- * transfer, both collected in advance, so every booking is prepaid. The COD path
- * is implemented in `shipment.ts` because the gateway models it, but nothing
- * here can produce a COD parcel today.
+ * A note on cash on delivery: every payment method this store accepts (GCash QR,
+ * bank transfer, PayPal) is collected in advance, so every booking is prepaid.
+ * The COD path is implemented in `shipment.ts` because the gateway models it,
+ * but nothing here can produce a COD parcel today.
  */
 import { getBigateConfig } from "../bigate/config";
 import { BigateError } from "../bigate/errors";

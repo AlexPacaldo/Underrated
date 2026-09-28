@@ -14,6 +14,7 @@ import { productImagePositions } from "@/data/products";
 import type { Product, ProductImagePosition } from "@/data/products";
 import { defaultHomepageContent, type HomepageContent, type HomepageSectionId } from "@/data/storefront";
 import { formatDeliveryAddress } from "@/lib/deliveryAddress";
+import { paymentMethodLabels } from "@/lib/accountOrders";
 import { buildOrderTimeline, countOrdersByFilter, orderFilters, orderMatchesFilter, orderStatusLabels, orderStatusShortLabels, type OrderFilter } from "@/lib/orderStatus";
 import { homepagePreviewPath, previewContentMessage, previewReadyMessage, previewRefreshMessage, readPreviewMetrics, readPreviewSection, type HomepagePreviewMetrics } from "@/lib/homepagePreview";
 import { productPreviewFields, productPreviewPath, productPreviewProductMessage, productPreviewReadyMessage, readPreviewField, readPreviewProductHeight, type ProductPreviewField } from "@/lib/productPreview";
@@ -146,7 +147,7 @@ function OrderCard({ order, customer, onUpdated }: { order: AdminOrder; customer
       <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">Rider sees</p>
       <OrderTimeline className="mt-3" timeline={timeline} />
     </div>
-    {order.manual_payment_submissions.length > 0 ? <div className="mt-4 border border-white/10 p-3 text-xs text-white/55"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">Payment references</p>{order.manual_payment_submissions.map((submission) => <p key={submission.id} className="mt-2">{submission.payment_method.replace("_", " ")} · <span className="font-bold text-white">{submission.reference_number}</span> · {formatDate(submission.created_at)}</p>)}</div> : null}
+    {order.manual_payment_submissions.length > 0 ? <div className="mt-4 border border-white/10 p-3 text-xs text-white/55"><p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">Payment references</p>{order.manual_payment_submissions.map((submission) => <p key={submission.id} className="mt-2">{paymentMethodLabels[submission.payment_method]} · <span className="font-bold text-white">{submission.reference_number}</span> · {formatDate(submission.created_at)}</p>)}</div> : null}
     {canBook && domestic ? <div className="mt-4 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-4">
       <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">Book a Bigate parcel</p>
       <p className="mt-2 text-xs leading-5 text-white/50">Books a waybill with Bigate and starts tracking for this order. The address, recipient and items come from the order, so only the measurements below are needed.</p>

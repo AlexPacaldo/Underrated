@@ -116,7 +116,7 @@ export default function AccountOrder() {
   const handleSubmitPayment = async () => {
     if (!order) return;
     if (!referenceNumber.trim()) {
-      toast.error("Reference number required.", { description: "Enter the GCash or bank transaction reference before submitting." });
+      toast.error("Reference number required.", { description: `Enter the ${paymentMethodLabels[paymentMethod]} transaction reference before submitting.` });
       return;
     }
 

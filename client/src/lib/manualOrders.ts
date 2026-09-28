@@ -2,7 +2,7 @@ import type { CartLine } from "@/contexts/StoreContext";
 import type { DeliveryAddress, ShippingRegion } from "@/lib/deliveryAddress";
 import { supabase } from "@/lib/supabase";
 
-export type ManualPaymentMethod = "gcash_qr" | "bank_transfer";
+export type ManualPaymentMethod = "gcash_qr" | "bank_transfer" | "paypal";
 export type ManualOrderStatus = "pending_payment" | "payment_submitted" | "paid" | "rejected" | "cancelled" | "processing" | "shipped" | "delivered";
 
 export type ManualOrder = {

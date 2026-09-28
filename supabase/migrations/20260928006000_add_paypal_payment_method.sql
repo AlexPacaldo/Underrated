@@ -1,0 +1,29 @@
+-- 20260928006000_add_paypal_payment_method.sql
+-- Adds PayPal as a third manual payment method, alongside GCash QR and bank
+-- transfer.
+--
+-- What "manual" means here, because it is easy to misread. This does not
+-- integrate the PayPal API and no money moves through this application. The
+-- customer clicks the store's own PayPal link, pays on PayPal's site, then types
+-- the PayPal transaction id into the same reference box GCash and bank transfer
+-- already use. A member of staff then confirms it in the PayPal dashboard and
+-- marks the submission verified, exactly as they already do for the other two.
+--
+-- So this is one label and one enum value, not a payment integration. Nothing in
+-- this repository can confirm a PayPal payment actually happened, which is
+-- precisely the property the other two methods already have and the reason
+-- verification stays a human step.
+--
+-- The enum is the allowlist. submit_manual_payment() takes
+-- public.manual_payment_method, so without this value a PayPal submission fails
+-- at the database and the checkout would offer a method the store cannot record.
+--
+-- IF NOT EXISTS so re-running this is harmless.
+--
+-- No grant needs re-issuing, which is worth stating because the instinct is to
+-- re-assert them and doing so would wrongly imply they had lapsed. Adding a value
+-- to an enum does not change the type's oid, so the signature of
+-- submit_manual_payment(uuid, public.manual_payment_method, text, text, text) is
+-- untouched and the revoke/grant from 20260925003000 still apply exactly as
+-- written.
+alter type public.manual_payment_method add value if not exists 'paypal';

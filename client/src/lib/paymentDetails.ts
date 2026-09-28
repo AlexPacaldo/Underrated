@@ -9,4 +9,9 @@ export const paymentDetails = {
   bankName: import.meta.env.VITE_BANK_NAME || "Set VITE_BANK_NAME",
   bankAccountName: import.meta.env.VITE_BANK_ACCOUNT_NAME || "Set VITE_BANK_ACCOUNT_NAME",
   bankAccountNumber: import.meta.env.VITE_BANK_ACCOUNT_NUMBER || "Set VITE_BANK_ACCOUNT_NUMBER",
+  /**
+   * Where the customer goes to actually pay by PayPal. Empty means the store has
+   * not set one, which the checkout reports rather than linking to nowhere.
+   */
+  paypalLink: import.meta.env.VITE_PAYPAL_LINK || "",
 };
