@@ -3,6 +3,11 @@
 -- set so a failure is readable without scrolling: every check is listed, and only
 -- 'FAIL' rows mean something is wrong.
 --
+-- This file is deliberately ONE statement. The SQL editor shows only the last
+-- statement of a paste, so anything appended after the report below is invisible
+-- unless it is run on its own. The raw ACL dump and the shipped_at audit that used
+-- to sit at the end now live in audit_bigate_shipped_at.sql.
+--
 -- Checks 4 to 8 are the ones that matter most. The grants are what stop a
 -- stranger from writing tracking events, and the enum and constraint are what
 -- stop a second parcel being booked for an order that is already on its way.
@@ -190,35 +195,3 @@ with checks as (
     has_table_privilege('authenticated', 'public.order_tracking_updates', 'SELECT')
 )
 select check_name, passed, case when passed then 'PASS' else 'FAIL' end as result from checks order by check_name;
-
--- If check 4 fails, this prints the raw ACL, which says exactly which roles hold
--- EXECUTE without the interpretation problems of information_schema.
-select
-  p.proname as function,
-  p.proacl as acl,
-  has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_may_execute,
-  has_function_privilege('anon', p.oid, 'EXECUTE') as anon_may_execute,
-  has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_may_execute
-from pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public'
-  and p.proname = 'logistics_record_tracking_event';
-
--- ------------------------------------------------------------------
--- Rows 14 and 15 cannot be checked automatically, because a shipped order that
--- was later cancelled keeps a correct shipped_at. Run this by eye after applying
--- the migrations. Anything listed here was either saved while pre-dispatch (the
--- bug) or genuinely shipped and was then closed. A shipped_at within a few
--- minutes of the migration timestamp, on an order that never reached 'shipped',
--- is the bug.
--- ------------------------------------------------------------------
-select
-  orders.order_number,
-  orders.status::text as status,
-  order_fulfillment.shipped_at,
-  order_fulfillment.delivered_at,
-  order_fulfillment.updated_at as row_last_touched
-from public.order_fulfillment
-join public.orders on orders.id = order_fulfillment.order_id
-where order_fulfillment.shipped_at is not null
-order by order_fulfillment.shipped_at desc nulls last;
