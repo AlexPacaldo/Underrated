@@ -1,7 +1,7 @@
 -- Proves the tracking pipeline end to end without a Bigate account.
 --
 -- Walks a parcel through the states a real one goes through, using the real RPCs,
--- starting from a genuinely pre-dispatch order and reporting fourteen checks in a
+-- starting from a genuinely pre-dispatch order and reporting fifteen checks in a
 -- single result set:
 --   paid -> picked_up (which ships the order) -> delivered, plus a retried
 --   delivery and a late out-of-order scan.
@@ -15,8 +15,8 @@
 -- It cannot prove the HTTP call to Bigate. That needs credentials.
 --
 -- How to read the output: the SQL editor shows only the last statement that
--- returns rows, which is the report. Every row must show pass = true. Checks 12
--- and 13 confirm the revokes did not break the account page, so one run is
+-- returns rows, which is the report. Every row must show pass = true. Checks 13
+-- and 14 confirm the revokes did not break the account page, so one run is
 -- enough and you do not need a second.
 --
 -- Cleanup is explicit rather than a transaction rollback, because the report has
@@ -95,6 +95,21 @@ insert into probe_step values (0, (
   where orders.id = (select id from probe_snapshot)
 ));
 
+-- Clear any tracking number the order already carries, so the first scan has
+-- somewhere to write and its AWB can be asserted exactly.
+--
+-- Needed because the probe takes whichever paid or processing order is most
+-- recent, and a real one often already has a tracking number typed into it by
+-- staff. Left alone, the scan's upsert would correctly keep that number, and the
+-- check below would fail for the wrong reason. Cleanup puts the original back.
+--
+-- That an existing number survives is not a throwaway detail, it is the same
+-- first-writer-wins rule that keeps shipped_at from drifting, so it is asserted
+-- on its own further down rather than assumed.
+update public.order_fulfillment
+set tracking_number = null
+where order_id = (select id from probe_snapshot);
+
 -- 1. The courier collects the parcel. This one scan is expected to move the order
 --    to 'shipped' and stamp shipped_at from the scan's own timestamp, which is a
 --    fixed instant below so the recorded value can be asserted exactly.
@@ -116,6 +131,15 @@ insert into probe_step values (2, (
   left join public.order_fulfillment as fulfillment on fulfillment.order_id = orders.id
   where orders.id = (select id from probe_snapshot)
 ));
+
+-- Put a tracking number back, standing in for one staff typed in by hand, so the
+-- delivery scan below has something it could overwrite. It must not: a courier
+-- callback is not authority to rewrite what staff recorded. This is the same
+-- first-writer-wins rule that protects shipped_at, and an earlier version of this
+-- probe passed only because it never created the situation.
+update public.order_fulfillment
+set tracking_number = 'PROBE-STAFF-AWB'
+where order_id = (select id from probe_snapshot);
 
 -- 3. Delivery. Expect duplicate=false, status=delivered, order moved to delivered.
 insert into probe_step values (3, public.logistics_record_tracking_event(
@@ -214,6 +238,14 @@ from (
       where shipments.awb = 'PROBE-AWB-1')
 
   union all select 8,
+    'a tracking number staff recorded is not overwritten by a later scan',
+    'PROBE-STAFF-AWB',
+    (select coalesce(fulfillment.tracking_number, 'null')
+       from public.orders
+       left join public.order_fulfillment as fulfillment on fulfillment.order_id = orders.id
+      where orders.id = (select id from probe_snapshot))
+
+  union all select 9,
     'parcel ended delivered, single parcel',
     'delivered / 1',
     (select status || ' / ' || parcel_count::text
@@ -222,7 +254,7 @@ from (
   -- Four events were sent but only three are stored: the retried delivery in
   -- step 4 returns early and writes nothing. Three rows with three distinct ids
   -- is the proof that the idempotency key works.
-  union all select 9,
+  union all select 10,
     'four events sent, retry stored only once',
     '3 / 3',
     (select count(*)::text || ' / ' || count(distinct provider_event_id)::text
@@ -230,7 +262,7 @@ from (
 
   -- Exactly one parcel was created for the order, despite five separate
   -- statements touching shipments.
-  union all select 10,
+  union all select 11,
     'exactly one parcel created for the order',
     '1',
     (select count(*)::text from public.shipments
@@ -238,21 +270,21 @@ from (
 
   -- The customer view is scoped to auth.uid(), and the SQL editor is not a
   -- signed-in rider, so zero rows is the correct answer, not a failure.
-  union all select 11,
+  union all select 12,
     'view is rider-scoped (0 rows is correct here)',
     '0',
     (select count(*)::text from public.order_tracking_updates where awb = 'PROBE-AWB-1')
 
   -- The revokes in 20260928004000. This is the check that would catch the revoke
   -- breaking the account page.
-  union all select 12,
+  union all select 13,
     'tables closed to public, view readable',
     'false / false / true',
     (select has_table_privilege('anon', 'public.shipments', 'select') || ' / ' ||
             has_table_privilege('authenticated', 'public.shipments', 'select') || ' / ' ||
             has_table_privilege('authenticated', 'public.order_tracking_updates', 'select'))
 
-  union all select 13,
+  union all select 14,
     'webhook function not callable by the public',
     'false / false / true',
     (select has_function_privilege('anon', 'public.logistics_record_tracking_event(text,text,text,text,text,timestamptz,text,text,jsonb)', 'execute') || ' / ' ||
