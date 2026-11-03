@@ -1,0 +1,161 @@
+.admin-shell {
+  min-height: calc(100vh - 68px);
+  background: #0c0d0e;
+  color: #f4f0ea;
+}
+
+.admin-shell .admin-topbar {
+  border-color: rgb(255 255 255 / 12%);
+  background: #101113;
+}
+
+.admin-shell .admin-nav {
+  align-self: start;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 12px;
+  background: #111214;
+  padding: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+}
+
+.admin-shell .admin-nav-item {
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.admin-shell .admin-nav-item[aria-pressed="true"] {
+  border-color: #ff5a36;
+  background: #ff5a36;
+  color: #0c0d0e;
+}
+
+.admin-shell label {
+  color: rgb(244 240 234 / 78%);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.45;
+  text-transform: none;
+}
+
+.admin-shell input:not([type="checkbox"]):not([type="file"]),
+.admin-shell select,
+.admin-shell textarea {
+  min-height: 44px;
+  border-color: rgb(255 255 255 / 18%);
+  border-radius: 8px;
+  background-color: #17191c;
+  color: #f4f0ea;
+  font-size: 14px;
+}
+
+.admin-shell textarea {
+  min-height: 96px;
+}
+
+.admin-shell input::placeholder,
+.admin-shell textarea::placeholder {
+  color: rgb(244 240 234 / 38%);
+}
+
+.admin-shell button {
+  border-radius: 8px;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.admin-shell button:focus-visible,
+.admin-shell input:focus-visible,
+.admin-shell select:focus-visible,
+.admin-shell textarea:focus-visible {
+  outline: 3px solid rgb(255 90 54 / 55%);
+  outline-offset: 2px;
+}
+
+.admin-shell [class~="bg-white/[.03]"] {
+  background-color: rgb(255 255 255 / 3%);
+}
+
+.admin-shell [class~="divide-white/10"] > :not(:last-child) {
+  border-color: rgb(255 255 255 / 10%);
+}
+
+.admin-shell [class~="bg-[#111214]"],
+.admin-shell [class~="bg-[#101113]"] {
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+}
+
+.admin-shell article {
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+}
+
+.admin-shell [class~="text-[10px]"] {
+  font-size: 12px;
+}
+
+.admin-shell [class~="text-[9px]"] {
+  font-size: 11px;
+}
+
+html:not(.dark) .admin-shell {
+  background: #f4f3ef;
+  color: #1b1d20;
+}
+
+html:not(.dark) .admin-shell .admin-topbar {
+  border-color: rgb(25 29 33 / 14%);
+  background: #fff;
+}
+
+html:not(.dark) .admin-shell .admin-nav {
+  border-color: rgb(25 29 33 / 14%);
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 5%);
+}
+
+html:not(.dark) .admin-shell .admin-nav-item[aria-pressed="true"] {
+  border-color: #ff5a36;
+  background: #ff5a36;
+  color: #111214;
+}
+
+html:not(.dark) .admin-shell label {
+  color: #475569;
+}
+
+html:not(.dark) .admin-shell input:not([type="checkbox"]):not([type="file"]),
+html:not(.dark) .admin-shell select,
+html:not(.dark) .admin-shell textarea {
+  border-color: #d7dee6;
+  background-color: #fff;
+  color: #17212b;
+}
+
+html:not(.dark) .admin-shell input::placeholder,
+html:not(.dark) .admin-shell textarea::placeholder {
+  color: #94a3b8;
+}
+
+html:not(.dark) .admin-shell article {
+  box-shadow: 0 2px 8px rgb(15 23 42 / 5%);
+}
+
+@media (min-width: 1024px) {
+  .admin-shell .admin-nav {
+    position: sticky;
+    top: 88px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .admin-shell .admin-nav {
+    margin-bottom: 4px;
+  }
+}

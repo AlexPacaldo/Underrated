@@ -38,12 +38,14 @@ export type AccountOrderTracking = {
 
 export type AccountPaymentSubmission = {
   id: string;
-  payment_method: "gcash_qr" | "bank_transfer" | "paypal";
+  payment_method: AccountPaymentMethod;
   reference_number: string;
   payer_name: string | null;
   note: string | null;
   created_at: string;
 };
+
+export type AccountPaymentMethod = "gcash_qr" | "bank_transfer" | "paypal";
 
 export type AccountOrder = {
   id: string;
@@ -115,7 +117,7 @@ export async function fetchAccountOrder(orderNumber: string) {
   return order ?? null;
 }
 
-export const paymentMethodLabels: Record<AccountPaymentSubmission["payment_method"], string> = {
+export const paymentMethodLabels: Record<AccountPaymentMethod, string> = {
   gcash_qr: "GCash QR",
   bank_transfer: "Bank transfer",
   paypal: "PayPal",

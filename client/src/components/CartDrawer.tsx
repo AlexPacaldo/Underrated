@@ -10,9 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { emptyDeliveryAddress, formatDeliveryAddress, isValidDeliveryAddress, normalizeDeliveryAddress, shippingRegionForAddress, type DeliveryAddress, type ShippingRegion } from "@/lib/deliveryAddress";
 import { useStore } from "@/contexts/StoreContext";
 import { Input } from "@/components/ui/input";
-import { createManualOrder, submitManualPayment, type ManualOrder, type ManualPaymentMethod } from "@/lib/manualOrders";
-import { paymentMethodLabels } from "@/lib/accountOrders";
-import PaymentReferenceForm from "@/components/PaymentReferenceForm";
+import { createManualOrder, submitManualPayment, type ManualOrder } from "@/lib/manualOrders";
+import PaymentReferenceForm, { paypalAvailable } from "@/components/PaymentReferenceForm";
 import { MapPin, Minus, PackageCheck, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -39,7 +38,6 @@ export default function CartDrawer() {
   const [saveAsDefault, setSaveAsDefault] = useState(true);
   const [addressError, setAddressError] = useState<string | null>(null);
   const [manualOrder, setManualOrder] = useState<ManualOrder | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("gcash_qr");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [payerName, setPayerName] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
@@ -71,7 +69,6 @@ export default function CartDrawer() {
 
   useEffect(() => {
     setManualOrder(null);
-    setPaymentMethod("gcash_qr");
     setReferenceNumber("");
     setPayerName("");
     setPaymentNote("");
@@ -94,7 +91,8 @@ export default function CartDrawer() {
   const unavailableLines = cart.filter((line) => !products.some((product) => product.id === line.id));
   const hasUnavailableLines = unavailableLines.length > 0;
   const exchangeRatePending = currency !== "PHP" && !rateReady;
-  const checkoutBlocked = hasUnavailableLines || exchangeRatePending;
+  const checkoutBlocked =
+    hasUnavailableLines || exchangeRatePending || !paypalAvailable;
 
   const handleAddressChange = (nextAddress: DeliveryAddress) => {
     setDeliveryAddress(nextAddress);
@@ -169,13 +167,13 @@ export default function CartDrawer() {
 
   const handleSubmitPayment = async () => {
     if (!manualOrder || !referenceNumber.trim()) {
-      toast.error("Reference number required.", { description: `Enter the ${paymentMethodLabels[paymentMethod]} transaction reference before submitting.` });
+      toast.error("PayPal transaction ID required.", { description: "Enter the transaction ID from PayPal before submitting." });
       return;
     }
 
     setSubmittingPayment(true);
     try {
-      const order = await submitManualPayment(manualOrder.id, paymentMethod, referenceNumber, payerName, paymentNote);
+      const order = await submitManualPayment(manualOrder.id, "paypal", referenceNumber, payerName, paymentNote);
       setManualOrder(order);
       clearCart();
       toast.success("Payment reference submitted.", { description: "We'll verify it against the received payment before fulfillment." });
@@ -322,8 +320,6 @@ export default function CartDrawer() {
                 <>
                   <PaymentReferenceForm
                     totalCents={manualOrder.total_cents}
-                    paymentMethod={paymentMethod}
-                    onPaymentMethodChange={setPaymentMethod}
                     referenceNumber={referenceNumber}
                     onReferenceNumberChange={setReferenceNumber}
                     payerName={payerName}
@@ -331,7 +327,7 @@ export default function CartDrawer() {
                     note={paymentNote}
                     onNoteChange={setPaymentNote}
                   />
-                  <button onClick={handleSubmitPayment} disabled={submittingPayment} className="w-full bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white disabled:cursor-wait disabled:opacity-60 active:scale-[0.98]">{submittingPayment ? "Submitting..." : "Submit payment reference"}</button>
+                  <button onClick={handleSubmitPayment} disabled={submittingPayment || !paypalAvailable} className="w-full bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]">{submittingPayment ? "Submitting..." : "Submit PayPal transaction ID"}</button>
                 </>
               ) : (
                 <p className="border border-white/10 p-4 text-center text-xs leading-relaxed text-white/50">Payment reference received. Hold tight while the payment is verified manually.</p>
@@ -341,6 +337,7 @@ export default function CartDrawer() {
             <>
               {hasUnavailableLines ? <p className="mb-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">Remove the unavailable part{unavailableLines.length > 1 ? "s" : ""} above before checking out.</p> : null}
               {exchangeRatePending ? <p className="mb-3 border border-white/10 bg-white/[.03] p-3 text-xs leading-5 text-white/55">Updating the {currency} exchange rate. Checkout unlocks once it loads, or switch back to PHP.</p> : null}
+              {!paypalAvailable ? <p className="mb-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">PayPal is not configured yet, so checkout is temporarily unavailable. Please contact the store for help.</p> : null}
               <button onClick={handleCreateOrder} disabled={cart.length === 0 || creatingOrder || checkoutBlocked} className="w-full bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]">{creatingOrder ? "Reserving order..." : user ? "Submit order" : "Sign in to submit order"}</button>
             </>
           )}

@@ -1,12 +1,13 @@
 /**
  * Design direction: Technical Drop Editorial — navigation is a compact printed masthead with an equipment-drawer mobile treatment.
  */
-import { Menu, Search, ShoppingBag, X } from "lucide-react";
+import { Menu, Moon, Search, ShoppingBag, Sun, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import AccountMenu from "@/components/AccountMenu";
 import { supportedCurrencies, useCurrency } from "@/contexts/CurrencyContext";
 import { useStore } from "@/contexts/StoreContext";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const navItems = [
   { href: "/shop", label: "Shop" },
@@ -16,6 +17,7 @@ const navItems = [
 export default function StoreHeader() {
   const { totalItems, openCart } = useStore();
   const { currency, setCurrency } = useCurrency();
+  const { theme, toggleTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [location] = useLocation();
@@ -56,6 +58,15 @@ export default function StoreHeader() {
                 {supportedCurrencies.map((item) => <option key={item.code} value={item.code} className="bg-[#111214]">{item.code}</option>)}
               </select>
             </label>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="grid size-9 place-items-center border border-white/15 text-white/85 transition hover:border-[#ff5a36] hover:text-[#ff5a36]"
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
             <AccountMenu />
             <button onClick={openCart} className="relative grid size-9 place-items-center text-white/85 transition hover:text-[#ff5a36]" aria-label={`Open cart with ${totalItems} items`}>
               <ShoppingBag size={18} />

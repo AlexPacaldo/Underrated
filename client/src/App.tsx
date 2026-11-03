@@ -29,7 +29,7 @@ function Router() {
 }
 
 function App() {
-  return <ErrorBoundary><ThemeProvider defaultTheme="dark"><TooltipProvider><AuthProvider><AddressBookProvider><CurrencyProvider><CatalogProvider><StoreProvider><Toaster theme="dark" /><Router /></StoreProvider></CatalogProvider></CurrencyProvider></AddressBookProvider></AuthProvider></TooltipProvider></ThemeProvider></ErrorBoundary>;
+  return <ErrorBoundary><ThemeProvider defaultTheme="dark" switchable><TooltipProvider><AuthProvider><AddressBookProvider><CurrencyProvider><CatalogProvider><StoreProvider><Toaster /><Router /></StoreProvider></CatalogProvider></CurrencyProvider></AddressBookProvider></AuthProvider></TooltipProvider></ThemeProvider></ErrorBoundary>;
 }
 
 export default App;

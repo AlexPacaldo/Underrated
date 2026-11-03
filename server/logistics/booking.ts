@@ -12,8 +12,8 @@
  * the caller. That means a compromised or careless admin client cannot redirect
  * a parcel, and it means a replayed request books the address the rider gave.
  *
- * A note on cash on delivery: every payment method this store accepts (GCash QR,
- * bank transfer, PayPal) is collected in advance, so every booking is prepaid.
+ * A note on cash on delivery: PayPal is collected in advance, so every booking
+ * is prepaid.
  * The COD path is implemented in `shipment.ts` because the gateway models it,
  * but nothing here can produce a COD parcel today.
  */
@@ -180,7 +180,7 @@ export async function bookOrderShipment(
     serviceCode: input.serviceCode ?? null,
     address,
     parcels,
-    // Every payment method this store accepts is collected in advance.
+    // PayPal is collected in advance.
     cod: null,
     paymentMode: "prepaid",
     remarks: input.remarks ?? null,

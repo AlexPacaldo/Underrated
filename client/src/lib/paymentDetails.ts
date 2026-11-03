@@ -3,15 +3,9 @@
  * page show the same account details instead of drifting apart.
  */
 export const paymentDetails = {
-  gcashName: import.meta.env.VITE_GCASH_ACCOUNT_NAME || "Set VITE_GCASH_ACCOUNT_NAME",
-  gcashNumber: import.meta.env.VITE_GCASH_ACCOUNT_NUMBER || "Set VITE_GCASH_ACCOUNT_NUMBER",
-  gcashQr: import.meta.env.VITE_GCASH_QR_IMAGE_URL || "",
-  bankName: import.meta.env.VITE_BANK_NAME || "Set VITE_BANK_NAME",
-  bankAccountName: import.meta.env.VITE_BANK_ACCOUNT_NAME || "Set VITE_BANK_ACCOUNT_NAME",
-  bankAccountNumber: import.meta.env.VITE_BANK_ACCOUNT_NUMBER || "Set VITE_BANK_ACCOUNT_NUMBER",
   /**
    * Where the customer goes to actually pay by PayPal. Empty means the store has
-   * not set one, which the checkout reports rather than linking to nowhere.
+   * not set one, which checkout reports instead of linking to nowhere.
    */
   paypalLink: import.meta.env.VITE_PAYPAL_LINK || "",
 };

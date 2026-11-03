@@ -10,12 +10,12 @@ import { useCatalog } from "@/contexts/CatalogContext";
 import { useStore } from "@/contexts/StoreContext";
 import { cancelAccountOrder, fetchAccountOrder, latestPaymentSubmission, paymentMethodLabels, type AccountOrder } from "@/lib/accountOrders";
 import { buildOrderTimeline, formatOrderDate, orderStatusLabels } from "@/lib/orderStatus";
-import { submitManualPayment, type ManualPaymentMethod } from "@/lib/manualOrders";
+import { submitManualPayment } from "@/lib/manualOrders";
 import { formatDeliveryAddress, shippingRegionForAddress, type ShippingRegion } from "@/lib/deliveryAddress";
 import OrderItemVisual from "@/components/account/OrderItemVisual";
 import OrderStatusBadge from "@/components/account/OrderStatusBadge";
 import OrderTimeline from "@/components/account/OrderTimeline";
-import PaymentReferenceForm from "@/components/PaymentReferenceForm";
+import PaymentReferenceForm, { paypalAvailable } from "@/components/PaymentReferenceForm";
 
 const regionLabels: Record<ShippingRegion, string> = {
   ph: "Philippines",
@@ -45,7 +45,6 @@ export default function AccountOrder() {
   const [busy, setBusy] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<ManualPaymentMethod>("gcash_qr");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [payerName, setPayerName] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
@@ -116,13 +115,13 @@ export default function AccountOrder() {
   const handleSubmitPayment = async () => {
     if (!order) return;
     if (!referenceNumber.trim()) {
-      toast.error("Reference number required.", { description: `Enter the ${paymentMethodLabels[paymentMethod]} transaction reference before submitting.` });
+      toast.error("PayPal transaction ID required.", { description: "Enter the transaction ID from PayPal before submitting." });
       return;
     }
 
     setBusy(true);
     try {
-      await submitManualPayment(order.id, paymentMethod, referenceNumber, payerName, paymentNote);
+      await submitManualPayment(order.id, "paypal", referenceNumber, payerName, paymentNote);
       setShowPayment(false);
       setReferenceNumber("");
       setPayerName("");
@@ -264,8 +263,6 @@ export default function AccountOrder() {
                     <div className="mt-5 grid gap-4 border-t border-white/10 pt-5">
                       <PaymentReferenceForm
                         totalCents={order.total_cents}
-                        paymentMethod={paymentMethod}
-                        onPaymentMethodChange={setPaymentMethod}
                         referenceNumber={referenceNumber}
                         onReferenceNumberChange={setReferenceNumber}
                         payerName={payerName}
@@ -274,8 +271,8 @@ export default function AccountOrder() {
                         onNoteChange={setPaymentNote}
                       />
                       <div className="flex flex-col gap-3 sm:flex-row">
-                        <button type="button" onClick={handleSubmitPayment} disabled={busy} className="bg-[#ff5a36] px-5 py-4 text-[10px] font-black uppercase tracking-[0.14em] text-black transition hover:bg-white disabled:cursor-wait disabled:opacity-60">
-                          {busy ? "Submitting..." : "Submit payment reference"}
+                        <button type="button" onClick={handleSubmitPayment} disabled={busy || !paypalAvailable} className="bg-[#ff5a36] px-5 py-4 text-[10px] font-black uppercase tracking-[0.14em] text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60">
+                          {busy ? "Submitting..." : "Submit PayPal transaction ID"}
                         </button>
                         <button type="button" onClick={() => setShowPayment(false)} className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.14em] text-white/45 transition hover:text-white">
                           Not now

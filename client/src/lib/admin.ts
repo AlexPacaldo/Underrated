@@ -4,7 +4,7 @@ import type { HomepageContent } from "@/data/storefront";
 import { normalizeImagePositions, type Product } from "@/data/products";
 import type { DeliveryAddress } from "@/lib/deliveryAddress";
 import type { OrderStatus } from "@/lib/orderStatus";
-import type { ManualPaymentMethod } from "@/lib/manualOrders";
+import type { AccountPaymentMethod } from "@/lib/accountOrders";
 import { supabase } from "@/lib/supabase";
 
 export type AdminOrderStatus = OrderStatus;
@@ -33,7 +33,7 @@ export type AdminOrder = {
   created_at: string;
   updated_at: string;
   order_items: { id: string; product_name: string; finish: string; quantity: number; line_total_cents: number }[];
-  manual_payment_submissions: { id: string; payment_method: ManualPaymentMethod; reference_number: string; payer_name: string | null; created_at: string }[];
+  manual_payment_submissions: { id: string; payment_method: AccountPaymentMethod; reference_number: string; payer_name: string | null; created_at: string }[];
 };
 
 export type AdminProfile = {

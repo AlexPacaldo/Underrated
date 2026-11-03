@@ -56,7 +56,7 @@ export default function HomepageSections({ content, products, categories, previe
   return (
     <>
       <SectionShell id="hero" label="Hero campaign" editable preview={preview}>
-        <section className="relative min-h-[790px] overflow-hidden bg-[#090a0b] pt-[68px] sm:min-h-[850px]">
+        <section className="homepage-hero relative min-h-[790px] overflow-hidden bg-[#090a0b] pt-[68px] sm:min-h-[850px]">
           <img src={content.hero_image_path} alt={content.hero_alt} className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,4,4,.95)_0%,rgba(3,4,4,.72)_34%,rgba(3,4,4,.22)_65%,rgba(3,4,4,.25)_100%)]" />
           <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(3,4,4,.7)_0%,transparent_32%)]" />
