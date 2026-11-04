@@ -1,0 +1,92 @@
+Underrated Cycling Store — E-commerce site for premium bicycle components (hoods, valve caps, saddles, bar tape, stems, display stands).
+
+---
+
+### Stack
+- **Frontend**: React 19, TypeScript, Vite, Wouter (routing), Tailwind CSS 4
+- **Backend**: Supabase (PostgreSQL, Auth, Storage, Realtime)
+- **Server**: Express static file server (SSR not used)
+- **UI**: Radix UI primitives, Framer Motion, Lucide icons, Sonner toasts
+- **Currency**: PHP base with live FX conversion (display currency per order)
+
+---
+
+### Core Data Models
+
+**Product** (`client/src/data/products.ts:40-65`)
+```typescript
+{
+  id, slug, name, category, price, badge?, descriptor, description,
+  finishes: string[], image?, images?, image_positions?,
+  visual: "hoods" | "valve" | "saddle" | "tape" | "stem" | "stand",
+  specs: {label, value}[], fitment: {headline, compatibility[], checkBeforeRide},
+  featured?, archived?, sortOrder?
+}
+```
+6 seeded products across 4 categories: Cockpit, Hoods, Valve Caps, Saddles.
+
+**Order** (`client/src/lib/admin.ts:10-28`)
+```typescript
+{
+  id, order_number, user_id, status: AdminOrderStatus,
+  total_cents, currency, display_currency, fx_rate,
+  shipping_region, shipping_address, fulfillment_note, tracking_number, admin_note,
+  order_items[], manual_payment_submissions[],
+  created_at, updated_at
+}
+```
+Status flow: `pending_payment → payment_submitted → paid → processing → shipped → delivered` (with `rejected`/`cancelled` branches).
+
+**HomepageContent** (`client/src/data/storefront.ts:3-33`) — 4 editable sections:
+- `hero` — full-bleed banner + oversized type
+- `drop` — featured product grid (4 columns, pulls from `featured` products)
+- `story` — split editorial panel
+- `journal` — 3-card "Notes from the bench"
+
+---
+
+### Pages / Routes
+| Route | Purpose |
+|-------|---------|
+| `/` | Homepage — editorial "drop" layout with live preview of editable sections |
+| `/shop` | Product index with category filter, search, sort (featured/newest/price) |
+| `/product/:slug` | Detail page — finish selector, specs, fitment, add-to-cart |
+| `/account` | User dashboard — order history, payment submissions, default address |
+| `/sign-in` | Google OAuth (Supabase Auth) |
+| `/admin` | Admin panel (role-gated) — Orders, Products, Homepage editor, Roles |
+
+---
+
+### Key Features
+- **Cart** (`StoreContext`) — client-side, persists to `localStorage`, syncs on auth
+- **Manual payment flow** — Customer submits GCash/bank reference → Admin verifies → Status advances
+- **Live preview in Admin** — iframe renders actual storefront components; click-to-edit syncs fields
+- **Image framing** — Per-photo crop positions (9 presets + custom %) stored in `image_positions`
+- **Multi-currency display** — Orders store `fx_rate` at creation; amounts shown in customer's currency
+- **Role-based access** — `customer` | `staff` | `admin` via Supabase `profiles` table + RPC
+
+---
+
+### Supabase Schema (inferred from migrations)
+- `products` — catalog with `image_positions` jsonb, `finishes` text[]
+- `orders` + `order_items` + `order_fulfillment` (tracking/notes)
+- `manual_payment_submissions` — references linked to orders
+- `profiles` — extends auth.users with `role`, `default_shipping_address` (jsonb)
+- `homepage_content` — single row `id="primary"` with all section fields
+- Storage bucket `storefront-assets` for product/homepage images
+
+---
+
+### Design Language
+"Technical Drop Editorial" — asymmetric grids, oversized display type (clamp 9rem–26rem), hard seams, signal tangerine (`#ff5a36`) accent on near-black (`#0c0d0e`/`#101113`) base. Dense information hierarchy, compact filters, "equipment index" feel.
+
+---
+
+### Dev Commands
+```bash
+pnpm dev        # Vite + Express on :3000
+pnpm build      # Vite build + esbuild server bundle
+pnpm start      # Production server
+pnpm check      # TypeScript noEmit
+pnpm format     # Prettier
+```

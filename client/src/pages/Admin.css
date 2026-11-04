@@ -104,49 +104,6 @@
   font-size: 11px;
 }
 
-html:not(.dark) .admin-shell {
-  background: #f4f3ef;
-  color: #1b1d20;
-}
-
-html:not(.dark) .admin-shell .admin-topbar {
-  border-color: rgb(25 29 33 / 14%);
-  background: #fff;
-}
-
-html:not(.dark) .admin-shell .admin-nav {
-  border-color: rgb(25 29 33 / 14%);
-  background: #fff;
-  box-shadow: 0 8px 24px rgb(15 23 42 / 5%);
-}
-
-html:not(.dark) .admin-shell .admin-nav-item[aria-pressed="true"] {
-  border-color: #ff5a36;
-  background: #ff5a36;
-  color: #111214;
-}
-
-html:not(.dark) .admin-shell label {
-  color: #475569;
-}
-
-html:not(.dark) .admin-shell input:not([type="checkbox"]):not([type="file"]),
-html:not(.dark) .admin-shell select,
-html:not(.dark) .admin-shell textarea {
-  border-color: #d7dee6;
-  background-color: #fff;
-  color: #17212b;
-}
-
-html:not(.dark) .admin-shell input::placeholder,
-html:not(.dark) .admin-shell textarea::placeholder {
-  color: #94a3b8;
-}
-
-html:not(.dark) .admin-shell article {
-  box-shadow: 0 2px 8px rgb(15 23 42 / 5%);
-}
-
 @media (min-width: 1024px) {
   .admin-shell .admin-nav {
     position: sticky;

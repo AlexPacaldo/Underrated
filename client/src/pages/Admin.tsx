@@ -1479,14 +1479,13 @@ const homepageSections: HomepageSection[] = [
     summary:
       "The first section visitors see. Update the main heading, intro text, and background photo.",
     fields: [
-      { key: "hero_kicker", label: "Small label" },
       { key: "hero_title", label: "Main heading" },
+      { key: "hero_accent", label: "Middle heading line" },
       {
-        key: "hero_accent",
-        label: "Highlighted heading line",
+        key: "hero_suffix",
+        label: "Final heading line",
         hint: "Shown in orange",
       },
-      { key: "hero_suffix", label: "Final heading line" },
       { key: "hero_description", label: "Intro text", rows: 3 },
       { key: "hero_image_path", label: "Background photo", upload: true },
       {
@@ -1547,7 +1546,6 @@ const homepageSections: HomepageSection[] = [
         label: "Highlighted heading",
         hint: "Shown in orange",
       },
-      { key: "journal_description", label: "Intro paragraph", rows: 3 },
       {
         key: "journal_post_one_image_path",
         label: "Story 1 / photo",

@@ -12,8 +12,8 @@ import { useStore } from "@/contexts/StoreContext";
 import { Input } from "@/components/ui/input";
 import { createManualOrder, submitManualPayment, type ManualOrder } from "@/lib/manualOrders";
 import PaymentReferenceForm, { paypalAvailable } from "@/components/PaymentReferenceForm";
-import { MapPin, Minus, PackageCheck, Plus, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, MapPin, Minus, PackageCheck, Plus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import ProductVisual from "@/components/ProductVisual";
 
@@ -29,7 +29,9 @@ export default function CartDrawer() {
   const { addresses, addAddress } = useAddressBook();
   const { products } = useCatalog();
   const { currency, rate, rateReady, formatMoney } = useCurrency();
-  const { cart, cartOpen, closeCart, subtotal, updateQuantity, removeLine, clearCart } = useStore();
+  const { cart, cartOpen, closeCart, subtotal, totalItems, updateQuantity, removeLine, clearCart } = useStore();
+  const [checkoutView, setCheckoutView] = useState<"cart" | "checkout">("cart");
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [deliveryAddress, setDeliveryAddress] = useState<DeliveryAddress>(emptyDeliveryAddress);
   const [addressMode, setAddressMode] = useState<"saved" | "new">("new");
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
@@ -74,6 +76,14 @@ export default function CartDrawer() {
     setPaymentNote("");
     setAddressError(null);
   }, [user?.id]);
+
+  useEffect(() => {
+    if (cartOpen && !manualOrder) setCheckoutView("cart");
+  }, [cartOpen, manualOrder]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [checkoutView, manualOrder]);
 
   const activeAddress = addressMode === "saved" && savedAddress && hasSavedAddress ? savedAddress : deliveryAddress;
   const addressIsValid = isValidDeliveryAddress(activeAddress);
@@ -184,126 +194,135 @@ export default function CartDrawer() {
     }
   };
 
+  const showingCheckout = checkoutView === "checkout" || Boolean(manualOrder);
+
   return (
     <div className={`fixed inset-0 z-50 ${cartOpen ? "pointer-events-auto" : "pointer-events-none"}`} aria-hidden={!cartOpen} inert={!cartOpen}>
       <button onClick={closeCart} className={`absolute inset-0 bg-black/65 transition-opacity duration-300 ${cartOpen ? "opacity-100" : "opacity-0"}`} aria-label="Close cart" />
-      <aside className={`absolute inset-y-0 right-0 flex w-full max-w-[480px] flex-col border-l border-white/10 bg-[#101113] shadow-2xl transition-transform duration-300 ${cartOpen ? "translate-x-0" : "translate-x-full"}`} aria-label="Shopping cart">
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
-          <span className="font-display text-3xl uppercase text-white">Your build</span>
-          <button onClick={closeCart} className="grid size-9 place-items-center border border-white/15 text-white hover:border-[#ff5a36] hover:text-[#ff5a36]" aria-label="Close cart"><X size={18} /></button>
+      <aside className={`absolute inset-y-0 right-0 flex w-full max-w-[480px] flex-col border-l border-white/10 bg-[#0f1012] shadow-2xl transition-transform duration-300 ${cartOpen ? "translate-x-0" : "translate-x-full"}`} aria-label="Shopping cart">
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            {checkoutView === "checkout" && !manualOrder ? (
+              <button onClick={() => setCheckoutView("cart")} className="grid size-8 shrink-0 place-items-center border border-white/15 text-white/60 transition hover:border-[#ff5a36] hover:text-[#ff5a36]" aria-label="Back to cart">
+                <ArrowLeft size={16} />
+              </button>
+            ) : null}
+            <h2 className="font-display text-4xl uppercase leading-none tracking-tight text-white">{manualOrder ? "Order" : showingCheckout ? "Checkout" : "Cart"}</h2>
+            {!showingCheckout && totalItems > 0 ? <span className="border border-white/15 px-2 py-0.5 text-[10px] font-bold tracking-[0.08em] text-white/55">{totalItems}</span> : null}
+          </div>
+          <button onClick={closeCart} className="grid size-9 shrink-0 place-items-center border border-white/15 text-white transition hover:border-[#ff5a36] hover:text-[#ff5a36]" aria-label="Close cart"><X size={18} /></button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {cart.length === 0 ? (
-            <div className="flex h-full min-h-72 flex-col justify-end border-b border-white/10 pb-8">
-              <span className="font-display text-6xl uppercase leading-[0.78] text-white/15">No parts<br />yet.</span>
-              <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/45">The good builds start with one considered detail.</p>
-            </div>
-          ) : cart.map((line) => {
-            const product = products.find((item) => item.id === line.id);
-            if (!product) {
-              return (
-                <div key={`${line.id}-${line.finish}`} className="flex items-center justify-between gap-3 border-b border-white/10 py-4">
-                  <div className="min-w-0">
-                    <p className="font-display text-xl uppercase leading-none text-white/45">Unavailable part</p>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">{line.finish} · archived from the catalog</p>
-                  </div>
-                  <button onClick={() => removeLine(line.id, line.finish)} className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-[#ff5a36] hover:text-white">Remove</button>
-                </div>
-              );
-            }
-            return (
-              <div key={`${line.id}-${line.finish}`} className="flex gap-3 border-b border-white/10 py-4">
-                <div className="size-20 shrink-0 overflow-hidden bg-[#1a1b1e]"><ProductVisual product={product} compact /></div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div><p className="font-display text-xl uppercase leading-none text-white">{product.name}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">{line.finish}</p></div>
-                    <button onClick={() => removeLine(line.id, line.finish)} className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40 hover:text-[#ff5a36]">Remove</button>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between"><div className="flex items-center border border-white/15"><button onClick={() => updateQuantity(line.id, line.finish, line.quantity - 1)} className="grid size-7 place-items-center text-white/60 hover:text-white" aria-label={`Decrease ${product.name} quantity`}><Minus size={13} /></button><span className="grid w-7 place-items-center text-xs font-bold text-white">{line.quantity}</span><button onClick={() => updateQuantity(line.id, line.finish, line.quantity + 1)} className="grid size-7 place-items-center text-white/60 hover:text-white" aria-label={`Increase ${product.name} quantity`}><Plus size={13} /></button></div><span className="text-sm font-bold text-white">{formatMoney(product.price * line.quantity)}</span></div>
-                </div>
-              </div>
-            );
-          })}
-          {cart.length > 0 && !manualOrder ? (
-            user ? (
-              <section className="mt-5 border border-white/10 bg-[#151719] p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/55"><MapPin size={14} className="text-[#ff5a36]" />Delivery address</p>
-                    <p className="mt-1 text-xs text-white/40">Pick a saved address or type a new one.</p>
-                  </div>
-                </div>
-                {addresses.length > 0 ? (
-                  <div className="mt-4 grid gap-2">
-                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/35">Saved addresses</p>
-                    {addresses.map((row) => {
-                      const candidate = normalizeDeliveryAddress(row);
-                      const picked = addressMode === "saved" && row.id === selectedAddressId;
-                      return (
-                        <button
-                          key={row.id}
-                          type="button"
-                          onClick={() => handleSelectSavedAddress(row.id)}
-                          className={`border p-3 text-left transition ${picked ? "border-[#ff5a36] bg-[#ff5a36]/5" : "border-white/10 bg-[#101113] hover:border-white/30"}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-bold text-white">{row.label || "Delivery address"}</span>
-                            {row.is_default ? <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.12em] text-[#ff5a36]">Default</span> : null}
-                          </div>
-                          <p className="mt-1 text-xs text-white/55">{candidate.recipient_name} / {formatDeliveryAddress(candidate)}</p>
-                        </button>
-                      );
-                    })}
-                    <button type="button" onClick={handleUseDifferentAddress} className="w-fit text-[10px] font-black uppercase tracking-[0.12em] text-white/45 transition hover:text-white">
-                      Use a different address
-                    </button>
-                  </div>
-                ) : null}
 
-                {hasSavedAddress && addressMode === "saved" ? (
-                  <div className={`${addresses.length > 0 ? "mt-4" : ""} border border-white/10 bg-[#101113] p-3`}>
-                    <p className="text-sm font-bold text-white">{activeAddress.recipient_name}</p>
-                    <p className="mt-1 text-xs leading-5 text-white/55">{formatDeliveryAddress(activeAddress)}</p>
-                    <p className="mt-1 text-xs text-white/40">{activeAddress.phone}</p>
-                    {activeAddress.delivery_instructions ? <p className="mt-1 text-xs leading-5 text-white/40">Note: {activeAddress.delivery_instructions}</p> : null}
-                  </div>
-                ) : addressMode === "new" ? (
-                  <>
-                    <div className="mt-4">
-                      <DeliveryAddressForm address={deliveryAddress} onChange={handleAddressChange} />
-                    </div>
-                    <label className="mt-4 flex cursor-pointer items-start gap-2 text-xs leading-5 text-white/55">
-                      <Checkbox checked={saveToAddressBook} onCheckedChange={(checked) => setSaveToAddressBook(checked === true)} className="mt-0.5 rounded-none border-white/25 data-[state=checked]:border-[#ff5a36] data-[state=checked]:bg-[#ff5a36] data-[state=checked]:text-black" />
-                      <span>Save this address so I can pick it again next time.</span>
-                    </label>
-                    {saveToAddressBook ? (
-                      <div className="mt-3 grid gap-3">
-                        <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white/45">
-                          <span>Label</span>
-                          <Input value={addressLabel} onChange={(event) => setAddressLabel(event.target.value)} maxLength={60} placeholder="Home, Office, Parents'" className="h-10 rounded-none border-white/15 bg-[#101113] text-sm text-white placeholder:text-white/30" />
-                        </label>
-                        <label className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-white/55">
-                          <Checkbox checked={saveAsDefault} onCheckedChange={(checked) => setSaveAsDefault(checked === true)} className="mt-0.5 rounded-none border-white/25 data-[state=checked]:border-[#ff5a36] data-[state=checked]:bg-[#ff5a36] data-[state=checked]:text-black" />
-                          <span>Make it my default delivery address.</span>
-                        </label>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-                {addressError ? <p className="mt-3 text-xs leading-5 text-[#ff5a36]">{addressError}</p> : null}
-              </section>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          {!showingCheckout ? (
+            cart.length === 0 ? (
+              <div className="flex h-full min-h-72 flex-col justify-end px-5 pb-9">
+                <span className="font-display text-6xl uppercase leading-[0.78] text-white/15">No parts<br />yet.</span>
+                <p className="mt-5 max-w-xs text-sm leading-relaxed text-white/45">The good builds start with one considered detail.</p>
+                <button onClick={closeCart} className="mt-6 w-fit border-b border-white/25 pb-1 text-[10px] font-bold uppercase tracking-[0.15em] text-white/60 transition hover:border-[#ff5a36] hover:text-[#ff5a36]">Continue shopping</button>
+              </div>
             ) : (
-              <section className="mt-5 border border-white/10 bg-[#151719] p-4">
-                <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/55"><MapPin size={14} className="text-[#ff5a36]" />Delivery address</p>
-                <p className="mt-2 text-xs leading-5 text-white/45">Sign in first, then we’ll ask where this order should be delivered and save it for next time.</p>
-              </section>
+              <div className="px-5">
+                {cart.map((line) => {
+                  const product = products.find((item) => item.id === line.id);
+                  if (!product) {
+                    return (
+                      <div key={`${line.id}-${line.finish}`} className="flex items-center justify-between gap-3 border-b border-white/10 py-4">
+                        <div className="min-w-0">
+                          <p className="font-display text-xl uppercase leading-none text-white/45">Unavailable part</p>
+                          <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">{line.finish} · archived from the catalog</p>
+                        </div>
+                        <button onClick={() => removeLine(line.id, line.finish)} className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-[#ff5a36] hover:text-white">Remove</button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={`${line.id}-${line.finish}`} className="flex gap-4 border-b border-white/10 py-4 first:pt-5">
+                      <div className="size-[72px] shrink-0 overflow-hidden bg-[#1a1b1e]"><ProductVisual product={product} compact /></div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-display text-xl uppercase leading-none text-white">{product.name}</p>
+                            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">{line.finish}</p>
+                          </div>
+                          <span className="shrink-0 pt-0.5 text-sm font-bold text-white">{formatMoney(product.price)}</span>
+                        </div>
+                        <div className="mt-3.5 flex items-center justify-between gap-3">
+                          <div className="flex items-center border border-white/15">
+                            <button onClick={() => updateQuantity(line.id, line.finish, line.quantity - 1)} className="grid size-8 place-items-center text-white/60 transition hover:text-white" aria-label={`Decrease ${product.name} quantity`}><Minus size={13} /></button>
+                            <span className="grid w-8 place-items-center text-xs font-bold text-white">{line.quantity}</span>
+                            <button onClick={() => updateQuantity(line.id, line.finish, line.quantity + 1)} className="grid size-8 place-items-center text-white/60 transition hover:text-white" aria-label={`Increase ${product.name} quantity`}><Plus size={13} /></button>
+                          </div>
+                          <button onClick={() => removeLine(line.id, line.finish)} className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40 transition hover:text-[#ff5a36]">Remove</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )
+          ) : !manualOrder ? (
+            <div className="px-5 py-5">
+              <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/60"><MapPin size={14} className="text-[#ff5a36]" />Delivery address</p>
+              {user ? (
+                <>
+                  {addresses.length > 0 && addressMode === "saved" ? (
+                    <div className="mt-4 grid gap-2">
+                      {addresses.map((row) => {
+                        const candidate = normalizeDeliveryAddress(row);
+                        const picked = row.id === selectedAddressId;
+                        return (
+                          <button key={row.id} type="button" onClick={() => handleSelectSavedAddress(row.id)} aria-pressed={picked} className={`flex w-full items-start gap-3 border p-3 text-left transition ${picked ? "border-[#ff5a36] bg-[#ff5a36]/5" : "border-white/10 bg-[#141517] hover:border-white/30"}`}>
+                            <span className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border ${picked ? "border-[#ff5a36]" : "border-white/25"}`}>{picked ? <span className="size-2 rounded-full bg-[#ff5a36]" /> : null}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="truncate text-xs font-bold uppercase tracking-[0.06em] text-white">{row.label || "Delivery address"}</span>
+                                {row.is_default ? <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.12em] text-[#ff5a36]">Default</span> : null}
+                              </span>
+                              <span className="mt-1 block text-xs leading-5 text-white/55">{candidate.recipient_name} · {candidate.phone}</span>
+                              <span className="block text-xs leading-5 text-white/40">{formatDeliveryAddress(candidate)}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                      <button type="button" onClick={handleUseDifferentAddress} className="w-fit text-[10px] font-black uppercase tracking-[0.12em] text-white/45 transition hover:text-[#ff5a36]">Use a different address</button>
+                    </div>
+                  ) : null}
+
+                  {addressMode === "new" ? (
+                    <div className="mt-4 space-y-4">
+                      {addresses.length > 0 ? (
+                        <button type="button" onClick={() => { setAddressMode("saved"); setDeliveryAddress(emptyDeliveryAddress); setAddressError(null); }} className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white/45 transition hover:text-[#ff5a36]"><ArrowLeft size={12} /> Saved addresses</button>
+                      ) : null}
+                      <DeliveryAddressForm address={deliveryAddress} onChange={handleAddressChange} />
+                      <label className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-white/55">
+                        <Checkbox checked={saveToAddressBook} onCheckedChange={(checked) => setSaveToAddressBook(checked === true)} className="mt-0.5 rounded-none border-white/25 data-[state=checked]:border-[#ff5a36] data-[state=checked]:bg-[#ff5a36] data-[state=checked]:text-black" />
+                        <span>Save this address so I can pick it again next time.</span>
+                      </label>
+                      {saveToAddressBook ? (
+                        <div className="grid gap-3">
+                          <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-white/45">
+                            <span>Label</span>
+                            <Input value={addressLabel} onChange={(event) => setAddressLabel(event.target.value)} maxLength={60} placeholder="Home, Office, Parents'" className="h-10 rounded-none border-white/15 bg-[#101113] text-sm text-white placeholder:text-white/30" />
+                          </label>
+                          <label className="flex cursor-pointer items-start gap-2 text-xs leading-5 text-white/55">
+                            <Checkbox checked={saveAsDefault} onCheckedChange={(checked) => setSaveAsDefault(checked === true)} className="mt-0.5 rounded-none border-white/25 data-[state=checked]:border-[#ff5a36] data-[state=checked]:bg-[#ff5a36] data-[state=checked]:text-black" />
+                            <span>Make it my default delivery address.</span>
+                          </label>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {addressError ? <p className="mt-3 text-xs leading-5 text-[#ff5a36]">{addressError}</p> : null}
+                </>
+              ) : (
+                <p className="mt-3 text-xs leading-6 text-white/45">Sign in first, then we’ll ask where this order should be delivered and save it for next time.</p>
+              )}
+            </div>
           ) : null}
         </div>
-        <div className="border-t border-white/10 p-5">
-          {cart.length > 0 && !manualOrder ? <div className="mb-5 border-y border-white/10 py-4"><div className="flex items-center justify-between gap-4"><div><p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.16em] text-white/60"><MapPin size={14} className="text-[#ff5a36]" />Delivery estimate</p><p className="mt-1 text-xs text-white/40">{addressIsValid ? `${selectedRegion.label} · ${selectedRegion.timing}` : "Enter a delivery address to calculate shipping."}</p></div></div><div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3"><p className="flex items-center gap-2 text-xs text-white/55"><PackageCheck size={15} className="text-[#ff5a36]" />{addressIsValid ? selectedRegion.timing : "Address needed"}</p><span className={`text-xs font-bold ${addressIsValid && shipping === 0 ? "text-[#ff5a36]" : "text-white"}`}>{!addressIsValid ? "—" : shipping === 0 ? "Shipping included" : formatMoney(shipping)}</span></div></div> : null}
-          {cart.length > 0 ? <div className="space-y-2 border-b border-white/10 pb-4"><div className="flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Parts subtotal</span><span className="text-sm font-bold text-white">{formatMoney(subtotal)}</span></div><div className="flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/45">Estimated shipping</span><span className="text-sm font-bold text-white">{!addressIsValid ? "Address needed" : shipping === 0 ? "Included" : formatMoney(shipping)}</span></div></div> : null}
-          <div className="mb-4 mt-4 flex items-baseline justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/65">{manualOrder ? "Order total" : "Estimated total"}</span><span className="font-display text-3xl text-white">{manualOrder ? formatMoney(manualOrder.total_cents / 100, manualOrder.display_currency, manualOrder.fx_rate) : formatMoney(displayedTotal)}</span></div>
+
+        <div className="border-t border-white/10 px-5 py-5">
           {manualOrder ? (
             <div className="space-y-4">
               <div className="border border-white/10 bg-[#151719] p-4">
@@ -314,6 +333,11 @@ export default function CartDrawer() {
                   </div>
                   <span className="border border-[#ff5a36]/35 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#ff5a36]">{manualOrder.status.replace("_", " ")}</span>
                 </div>
+              </div>
+
+              <div className="flex items-baseline justify-between border-b border-white/10 pb-3">
+                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/65">Order total</span>
+                <span className="font-display text-3xl text-white">{formatMoney(manualOrder.total_cents / 100, manualOrder.display_currency, manualOrder.fx_rate)}</span>
               </div>
 
               {manualOrder.status === "pending_payment" ? (
@@ -333,15 +357,31 @@ export default function CartDrawer() {
                 <p className="border border-white/10 p-4 text-center text-xs leading-relaxed text-white/50">Payment reference received. Hold tight while the payment is verified manually.</p>
               )}
             </div>
-          ) : (
+          ) : showingCheckout ? (
             <>
-              {hasUnavailableLines ? <p className="mb-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">Remove the unavailable part{unavailableLines.length > 1 ? "s" : ""} above before checking out.</p> : null}
-              {exchangeRatePending ? <p className="mb-3 border border-white/10 bg-white/[.03] p-3 text-xs leading-5 text-white/55">Updating the {currency} exchange rate. Checkout unlocks once it loads, or switch back to PHP.</p> : null}
-              {!paypalAvailable ? <p className="mb-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">PayPal is not configured yet, so checkout is temporarily unavailable. Please contact the store for help.</p> : null}
-              <button onClick={handleCreateOrder} disabled={cart.length === 0 || creatingOrder || checkoutBlocked} className="w-full bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]">{creatingOrder ? "Reserving order..." : user ? "Submit order" : "Sign in to submit order"}</button>
+              <div className="space-y-2.5">
+                <div className="flex items-baseline justify-between gap-4"><span className="text-xs text-white/50">Subtotal</span><span className="text-sm font-bold text-white">{formatMoney(subtotal)}</span></div>
+                <div className="flex items-baseline justify-between gap-4"><span className="text-xs text-white/50">Shipping</span><span className="text-sm font-bold text-white">{!addressIsValid ? <span className="text-xs font-normal text-white/40">Enter address</span> : shipping === 0 ? "Free" : formatMoney(shipping)}</span></div>
+                <div className="flex items-baseline justify-between gap-4 border-t border-white/10 pt-3"><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/65">Total</span><span className="font-display text-3xl text-white">{formatMoney(displayedTotal)}</span></div>
+              </div>
+              {addressIsValid ? <p className="mt-2.5 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-white/35"><PackageCheck size={13} className="text-[#ff5a36]" />{selectedRegion.label} · {selectedRegion.timing}</p> : null}
+              {hasUnavailableLines ? <p className="mt-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">Remove the unavailable part{unavailableLines.length > 1 ? "s" : ""} above before checking out.</p> : null}
+              {exchangeRatePending ? <p className="mt-3 border border-white/10 bg-white/[.03] p-3 text-xs leading-5 text-white/55">Updating the {currency} exchange rate. Checkout unlocks once it loads, or switch back to PHP.</p> : null}
+              {!paypalAvailable ? <p className="mt-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">PayPal is not configured yet, so checkout is temporarily unavailable. Please contact the store for help.</p> : null}
+              <button onClick={handleCreateOrder} disabled={cart.length === 0 || creatingOrder || checkoutBlocked} className="mt-4 w-full bg-white px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]">{creatingOrder ? "Placing order..." : user ? "Place order" : "Sign in to continue"}</button>
+              <p className="mt-3 text-center text-[10px] leading-relaxed text-white/35">Shipping is an estimate. Orders are fulfilled after manual payment verification.</p>
             </>
-          )}
-          <p className="mt-3 text-center text-[10px] leading-relaxed text-white/35">Shipping is an estimate. Orders are fulfilled after manual payment verification.</p>
+          ) : cart.length > 0 ? (
+            <>
+              <div className="space-y-2.5">
+                <div className="flex items-baseline justify-between gap-4"><span className="text-xs text-white/50">Subtotal</span><span className="text-sm font-bold text-white">{formatMoney(subtotal)}</span></div>
+                <div className="flex items-baseline justify-between gap-4"><span className="text-xs text-white/50">Shipping</span><span className="text-xs text-white/40">At checkout</span></div>
+              </div>
+              {hasUnavailableLines ? <p className="mt-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">Remove the unavailable part{unavailableLines.length > 1 ? "s" : ""} above before checking out.</p> : null}
+              <button onClick={() => setCheckoutView("checkout")} className="mt-5 w-full bg-white px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-[#ff5a36] active:scale-[0.99]">Checkout</button>
+              <button onClick={closeCart} className="mt-3 w-full text-center text-[10px] font-bold uppercase tracking-[0.16em] text-white/45 transition hover:text-white">Continue shopping</button>
+            </>
+          ) : null}
         </div>
       </aside>
     </div>

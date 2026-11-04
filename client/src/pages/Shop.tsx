@@ -1,18 +1,28 @@
-/**
- * Design direction: Technical Drop Editorial — browsing is a compact equipment index with sharp filters and dense product information.
- */
 import ProductCard from "@/components/ProductCard";
 import { useCatalog } from "@/contexts/CatalogContext";
 import { Search, SlidersHorizontal, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 
 export default function Shop() {
   const { products, categories } = useCatalog();
   const filterNames = ["All", ...categories.map((category) => category.name)];
-  const initialCategory = new URLSearchParams(window.location.search).get("category") ?? "All";
+  const searchParams = useSearch();
+  const [, navigate] = useLocation();
+  const initialCategory = new URLSearchParams(searchParams).get("category") ?? "All";
   const [category, setCategory] = useState(filterNames.includes(initialCategory) ? initialCategory : "All");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("featured");
+
+  useEffect(() => {
+    const requested = new URLSearchParams(searchParams).get("category") ?? "All";
+    setCategory(filterNames.includes(requested) ? requested : "All");
+  }, [searchParams]);
+
+  const selectCategory = (nextCategory: string) => {
+    setCategory(nextCategory);
+    navigate(nextCategory === "All" ? "/shop" : `/shop?category=${encodeURIComponent(nextCategory)}`, { replace: true });
+  };
 
   const shownProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -42,7 +52,7 @@ export default function Shop() {
       <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-9">
         <div className="flex flex-col gap-5 border-b border-white/15 pb-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-wrap lg:overflow-visible">
-            {filterNames.map((item) => <button key={item} onClick={() => setCategory(item)} className={`whitespace-nowrap border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] transition ${category === item ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/65 hover:border-white/50 hover:text-white"}`}>{item}</button>)}
+            {filterNames.map((item) => <button key={item} onClick={() => selectCategory(item)} className={`whitespace-nowrap border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.14em] transition ${category === item ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/65 hover:border-white/50 hover:text-white"}`}>{item}</button>)}
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <label className="flex min-w-0 items-center border border-white/15 bg-[#121316] text-white/60 focus-within:border-[#ff5a36] sm:w-72"><Search className="ml-3 shrink-0" size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search parts" className="h-10 min-w-0 flex-1 bg-transparent px-3 text-sm text-white outline-none placeholder:text-white/35" aria-label="Search parts" />{query ? <button className="mr-2 grid size-6 place-items-center text-white/50 hover:text-white" onClick={() => setQuery("")} aria-label="Clear search"><X size={15} /></button> : null}</label>
@@ -51,7 +61,7 @@ export default function Shop() {
         </div>
 
         <div className="flex items-center justify-between border-l border-[#ff5a36] py-5 pl-3"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">{shownProducts.length.toString().padStart(2, "0")} {shownProducts.length === 1 ? "component" : "components"}</p><p className="hidden text-[10px] font-bold uppercase tracking-[.14em] text-white/35 sm:block">Select a detail. Make the build read.</p></div>
-        {shownProducts.length ? <div className="grid gap-x-4 gap-y-10 sm:grid-cols-2 lg:grid-cols-12 lg:gap-x-6 lg:gap-y-14">{shownProducts.map((product, index) => <div className={`reveal-up ${index === 0 ? "lg:col-span-5 lg:pt-8" : index === 1 ? "lg:col-span-3 lg:-mt-7" : index === 2 ? "lg:col-span-4 lg:pt-16" : index === 3 ? "lg:col-span-3 lg:-mt-9" : index === 4 ? "lg:col-span-5 lg:pt-11" : "lg:col-span-4 lg:-mt-3"}`} key={product.id}><div className="mb-3 hidden border-l border-[#ff5a36] pl-2 lg:flex lg:items-center lg:justify-between"><span className="text-[9px] font-bold uppercase tracking-[.16em] text-white/35">Object / {String(index + 1).padStart(2, "0")}</span>{index === 1 || index === 4 ? <span className="font-display text-3xl uppercase leading-none text-white/[.11]">UC</span> : null}</div><ProductCard product={product} priority={index < 3} /></div>)}</div> : <div className="flex min-h-80 flex-col justify-end border-y border-white/15 pb-9"><span className="font-display text-6xl uppercase leading-[.75] text-white/15">Nothing<br />found.</span><p className="mt-5 text-sm text-white/45">Try a broader word or clear your filters.</p><button onClick={() => { setCategory("All"); setQuery(""); }} className="mt-5 w-fit border border-[#ff5a36] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[#ff5a36] hover:bg-[#ff5a36] hover:text-black">Reset shop</button></div>}
+        {shownProducts.length ? <div className="grid grid-cols-1 gap-x-4 gap-y-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-x-6 lg:gap-y-12">{shownProducts.map((product, index) => <div className="reveal-up" key={product.id}><ProductCard product={product} priority={index < 3} /></div>)}</div> : <div className="flex min-h-80 flex-col justify-end border-y border-white/15 pb-9"><span className="font-display text-6xl uppercase leading-[.75] text-white/15">Nothing<br />found.</span><p className="mt-5 text-sm text-white/45">Try a broader word or clear your filters.</p><button onClick={() => { selectCategory("All"); setQuery(""); }} className="mt-5 w-fit border border-[#ff5a36] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[#ff5a36] hover:bg-[#ff5a36] hover:text-black">Reset shop</button></div>}
       </div>
     </section>
   );
