@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Archive,
   ArrowLeft,
   Check,
   ExternalLink,
+  GripVertical,
   ImagePlus,
   LayoutDashboard,
+  LogOut,
   Package,
   Search,
   Save,
@@ -26,8 +28,12 @@ import { usePreviewScale } from "@/components/admin/usePreviewScale";
 import { useAuth, type AccountRole } from "@/contexts/AuthContext";
 import { useCatalog } from "@/contexts/CatalogContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
-import { productImagePositions } from "@/data/products";
-import type { Product, ProductImagePosition } from "@/data/products";
+import { productImagePositions, productImageFrameRatio } from "@/data/products";
+import type {
+  Product,
+  ProductImageFrame,
+  ProductImagePosition,
+} from "@/data/products";
 import {
   defaultHomepageContent,
   type HomepageContent,
@@ -559,21 +565,10 @@ function newProduct(): Product {
   };
 }
 
-function parseSpecText(value: string) {
-  return value.split("\n").flatMap(line => {
-    const separator = line.indexOf(":");
-    if (separator < 1) return [];
-    const label = line.slice(0, separator).trim();
-    const specValue = line.slice(separator + 1).trim();
-    return label && specValue ? [{ label, value: specValue }] : [];
-  });
-}
-
-function parseLineList(value: string) {
-  return value
-    .split("\n")
-    .map(line => line.trim())
-    .filter(Boolean);
+function withProductWeight(specs: Product["specs"], weight: string) {
+  const otherSpecs = specs.filter(item => item.label.toLowerCase() !== "weight");
+  const cleanWeight = weight.trim();
+  return cleanWeight ? [...otherSpecs, { label: "Weight", value: cleanWeight }] : otherSpecs;
 }
 
 /** The lead photo stays in image and every extra photo stays in gallery order, with no duplicates. */
@@ -585,6 +580,33 @@ function normalizeImages(image: string | undefined, images: string[]) {
     if (item && item !== lead && !extras.includes(item)) extras.push(item);
   }
   return { image: lead || undefined, images: extras };
+}
+
+function withGalleryFrame(product: Product, frame: ProductImageFrame): Product {
+  const photos = [product.image, ...(product.images ?? [])].filter(
+    (value): value is string => Boolean(value)
+  );
+  return {
+    ...product,
+    image_frames: Object.fromEntries(photos.map(photo => [photo, frame])),
+  };
+}
+
+function imagePositionCoordinates(position?: ProductImagePosition): [number, number] {
+  if (!position) return [50, 50];
+  const percentages = position.match(/^(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/);
+  if (percentages) return [Number(percentages[1]), Number(percentages[2])];
+
+  const parts = position.split(" ");
+  const horizontal = parts.find(part => ["left", "right"].includes(part));
+  const vertical = parts.find(part => ["top", "bottom"].includes(part));
+  const x = horizontal === "left" ? 0 : horizontal === "right" ? 100 : 50;
+  const y = vertical === "top" ? 0 : vertical === "bottom" ? 100 : 50;
+  return [x, y];
+}
+
+function formatImagePosition(x: number, y: number): ProductImagePosition {
+  return `${x.toFixed(2)}% ${y.toFixed(2)}%` as ProductImagePosition;
 }
 
 /** Dropping the lead shot promotes the next gallery photo, so an item never shows a photo that is not its lead. */
@@ -603,24 +625,11 @@ function appendImages(product: Product, incoming: string[]) {
     : shiftLead(extras);
 }
 
-/** Re-typing the lead field behaves exactly like promoting that photo, so a retyped URL never drops the old lead. */
-function setLeadImage(product: Product, value: string) {
-  const lead = value.trim();
-  return lead ? promoteImage(product, lead) : shiftLead(product.images ?? []);
-}
-
 function dropImage(product: Product, value: string) {
   const extras = (product.images ?? []).filter(item => item !== value);
   return product.image === value
     ? shiftLead(extras)
     : normalizeImages(product.image, extras);
-}
-
-function promoteImage(product: Product, value: string) {
-  return normalizeImages(value, [
-    product.image ?? "",
-    ...(product.images ?? []),
-  ]);
 }
 
 function ProductEditor({
@@ -632,15 +641,18 @@ function ProductEditor({
   onSaved: () => Promise<void>;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(product);
-  const [specText, setSpecText] = useState(
-    product.specs.map(item => `${item.label}: ${item.value}`).join("\n")
+  const [draft, setDraft] = useState(() =>
+    withGalleryFrame(
+      product,
+      product.image_frames?.[product.image ?? ""] ?? "wide"
+    )
   );
-  const [fitmentText, setFitmentText] = useState(
-    product.fitment.compatibility.join("\n")
+  const [weight, setWeight] = useState(
+    product.specs.find(item => item.label.toLowerCase() === "weight")?.value ?? ""
   );
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [draggedImage, setDraggedImage] = useState<string | null>(null);
   const [device, setDevice] = useState(previewDevices[1]);
   const [previewHeight, setPreviewHeight] = useState(1500);
   const [focusRequest, setFocusRequest] = useState<{
@@ -649,6 +661,7 @@ function ProductEditor({
   } | null>(null);
   const focusId = useRef(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const { stageRef, scale } = usePreviewScale(device.width);
   const update = <K extends keyof Product>(key: K, value: Product[K]) =>
     setDraft(current => ({ ...current, [key]: value }));
@@ -659,11 +672,11 @@ function ProductEditor({
       ...draft,
       ...normalizeImages(draft.image, draft.images ?? []),
       image_positions: draft.image_positions,
+      image_frames: draft.image_frames,
       finishes: draft.finishes.map(item => item.trim()).filter(Boolean),
-      specs: parseSpecText(specText),
-      fitment: { ...draft.fitment, compatibility: parseLineList(fitmentText) },
+      specs: withProductWeight(draft.specs, weight),
     }),
-    [draft, specText, fitmentText]
+    [draft, weight]
   );
 
   const pushPreview = useCallback(() => {
@@ -700,11 +713,15 @@ function ProductEditor({
   }, [focusRequest]);
 
   useEffect(() => {
-    setDraft(product);
-    setSpecText(
-      product.specs.map(item => `${item.label}: ${item.value}`).join("\n")
+    setDraft(
+      withGalleryFrame(
+        product,
+        product.image_frames?.[product.image ?? ""] ?? "wide"
+      )
     );
-    setFitmentText(product.fitment.compatibility.join("\n"));
+    setWeight(
+      product.specs.find(item => item.label.toLowerCase() === "weight")?.value ?? ""
+    );
   }, [product]);
 
   const save = async () => {
@@ -755,11 +772,7 @@ function ProductEditor({
         ...draft,
         slug,
         finishes: cleanFinishes,
-        specs: parseSpecText(specText),
-        fitment: {
-          ...draft.fitment,
-          compatibility: parseLineList(fitmentText),
-        },
+        specs: withProductWeight(draft.specs, weight),
       });
       toast.success("Shop item saved.");
       await onSaved();
@@ -775,69 +788,134 @@ function ProductEditor({
   const gallery = [draft.image, ...(draft.images ?? [])].filter(
     (item): item is string => Boolean(item)
   );
+  const galleryFrame = gallery.length
+    ? (draft.image_frames?.[gallery[0]] ?? "wide")
+    : "wide";
+  const updateGalleryFrame = (frame: ProductImageFrame) =>
+    setDraft(current => withGalleryFrame(current, frame));
 
-  const addImage = (value: string) =>
-    setDraft(current => ({ ...current, ...appendImages(current, [value]) }));
   const removeImage = (value: string) =>
     setDraft(current => ({ ...current, ...dropImage(current, value) }));
-  const makeLead = (value: string) =>
-    setDraft(current => ({ ...current, ...promoteImage(current, value) }));
+  const reorderImage = (source: string, target: string) => {
+    if (source === target) return;
+    setDraft(current => {
+      const photos = [current.image, ...(current.images ?? [])].filter(
+        (value): value is string => Boolean(value)
+      );
+      const from = photos.indexOf(source);
+      const to = photos.indexOf(target);
+      if (from < 0 || to < 0) return current;
+      photos.splice(to, 0, ...photos.splice(from, 1));
+      return { ...current, ...normalizeImages(photos[0], photos.slice(1)) };
+    });
+  };
 
   // Framing: pick a photo, then drag it inside the frame to set the crop.
   const [framing, setFraming] = useState<string | null>(null);
+  const framingPhoto = framing && gallery.includes(framing) ? framing : gallery[0];
   const [dragStart, setDragStart] = useState<{
     x: number;
     y: number;
     posX: number;
     posY: number;
+    overflowX: number;
+    overflowY: number;
   } | null>(null);
   const [zoom, setZoom] = useState(1);
-  const framingPhotoRef = useRef<string | undefined>(gallery[0]);
+  const [imageDimensions, setImageDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [cropX, cropY] = imagePositionCoordinates(
+    framingPhoto ? draft.image_positions?.[framingPhoto] : undefined
+  );
+  const frameRatio = productImageFrameRatio(galleryFrame);
+  const photoRatio = imageDimensions
+    ? imageDimensions.width / imageDimensions.height
+    : null;
+  const imageWidthScale =
+    photoRatio === null ? 1 : Math.max(1, photoRatio / frameRatio) * zoom;
+  const imageHeightScale =
+    photoRatio === null ? 1 : Math.max(1, frameRatio / photoRatio) * zoom;
+  const canAdjustCropX = imageWidthScale > 1;
+  const canAdjustCropY = imageHeightScale > 1;
 
   useEffect(() => {
-    framingPhotoRef.current =
-      framing && gallery.includes(framing) ? framing : gallery[0];
-  }, [framing, gallery]);
+    setImageDimensions(null);
+    setDragStart(null);
+  }, [framingPhoto]);
 
   const handleDragStart = (event: React.PointerEvent) => {
-    const photo = framingPhotoRef.current;
-    if (!photo) return;
+    const photo = framingPhoto;
+    if (!photo || !imageDimensions) return;
     event.preventDefault();
-    const pos = draft.image_positions?.[photo];
-    const current = pos
-      ? pos.split("%").map(v => Number(v.replace("%", "")))
-      : [50, 50];
-    const cx = current[0] ?? 50;
-    const cy = current[1] ?? 50;
-    setDragStart({ x: event.clientX, y: event.clientY, posX: cx, posY: cy });
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const frameRatio = bounds.width / bounds.height;
+    const imageRatio = imageDimensions.width / imageDimensions.height;
+    const overflowX =
+      Math.max(bounds.width, bounds.height * imageRatio) * zoom - bounds.width;
+    const overflowY =
+      Math.max(bounds.height, bounds.width / imageRatio) * zoom - bounds.height;
+    const [posX, posY] = imagePositionCoordinates(
+      draft.image_positions?.[photo]
+    );
+    setDragStart({
+      x: event.clientX,
+      y: event.clientY,
+      posX,
+      posY,
+      overflowX,
+      overflowY,
+    });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handleDragMove = (event: React.PointerEvent) => {
     if (!dragStart) return;
-    const photo = framingPhotoRef.current;
+    const photo = framingPhoto;
     if (!photo) return;
     const dx = event.clientX - dragStart.x;
     const dy = event.clientY - dragStart.y;
-    // 1px drag ≈ 0.5% position change
-    const nextX = Math.max(
-      0,
-      Math.min(100, dragStart.posX + (dx * 0.5) / zoom)
-    );
-    const nextY = Math.max(
-      0,
-      Math.min(100, dragStart.posY + (dy * 0.5) / zoom)
-    );
+    const nextX = Math.max(0, Math.min(100,
+      dragStart.posX - (dragStart.overflowX > 0 ? (dx * 100) / dragStart.overflowX : 0)
+    ));
+    const nextY = Math.max(0, Math.min(100,
+      dragStart.posY - (dragStart.overflowY > 0 ? (dy * 100) / dragStart.overflowY : 0)
+    ));
     setDraft(cur => ({
       ...cur,
       image_positions: {
         ...(cur.image_positions ?? {}),
-        [photo]: `${Math.round(nextX)}% ${Math.round(nextY)}%`,
+        [photo]: formatImagePosition(nextX, nextY),
       },
     }));
   };
 
   const handleDragEnd = () => setDragStart(null);
+  const updateCropPosition = (axis: "x" | "y", value: number) => {
+    if (!framingPhoto) return;
+    const [x, y] = imagePositionCoordinates(
+      draft.image_positions?.[framingPhoto]
+    );
+    setDraft(current => ({
+      ...current,
+      image_positions: {
+        ...(current.image_positions ?? {}),
+        [framingPhoto]: formatImagePosition(
+          axis === "x" ? value : x,
+          axis === "y" ? value : y
+        ),
+      },
+    }));
+  };
+  const resetCropPosition = () => {
+    if (!framingPhoto) return;
+    setDraft(current => {
+      const imagePositions = { ...(current.image_positions ?? {}) };
+      delete imagePositions[framingPhoto];
+      return { ...current, image_positions: imagePositions };
+    });
+  };
 
   const upload = async (picked: File[]) => {
     if (picked.length === 0) return;
@@ -846,7 +924,16 @@ function ProductEditor({
       const paths: string[] = [];
       for (const file of picked)
         paths.push(await uploadStorefrontAsset(file, "products"));
-      setDraft(current => ({ ...current, ...appendImages(current, paths) }));
+      setDraft(current => {
+        const updated = {
+          ...current,
+          ...appendImages(current, paths),
+        };
+        return withGalleryFrame(
+          updated,
+          updated.image_frames?.[current.image ?? ""] ?? galleryFrame
+        );
+      });
       toast.success(
         picked.length === 1
           ? "Photo uploaded."
@@ -888,7 +975,7 @@ function ProductEditor({
           </button>
         </div>
       </div>
-      <div className="grid gap-6 p-5 2xl:grid-cols-[minmax(0,1.25fr)_minmax(380px,1fr)]">
+      <div className="grid gap-6 p-5 2xl:grid-cols-[minmax(0,1.1fr)_minmax(400px,.9fr)]">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-1.5">
             {previewDevices.map(item => (
@@ -918,228 +1005,292 @@ function ProductEditor({
             its field.
           </p>
         </div>
-        <div className="min-w-0">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className={labelClass}>
-              Name
-              <input
-                data-editor-field="name"
-                value={draft.name}
-                onChange={event => update("name", event.target.value)}
-                className={inputClass}
-              />
-            </label>
-            <label className={labelClass}>
-              Shop URL (optional)
-              <input
-                value={draft.slug}
-                onChange={event => update("slug", event.target.value)}
-                className={inputClass}
-                placeholder="Created from item name if left blank"
-              />
-            </label>
-            <label className={labelClass}>
-              Category
-              <input
-                data-editor-field="category"
-                value={draft.category}
-                onChange={event => update("category", event.target.value)}
-                className={inputClass}
-              />
-            </label>
-            <label className={labelClass}>
-              Price in PHP
-              <input
-                data-editor-field="price"
-                type="number"
-                min="0"
-                step="1"
-                value={draft.price}
-                onChange={event => update("price", Number(event.target.value))}
-                className={inputClass}
-              />
-            </label>
-            <label className={labelClass}>
-              Product badge (optional)
-              <input
-                data-editor-field="badge"
-                value={draft.badge ?? ""}
-                onChange={event => update("badge", event.target.value)}
-                className={inputClass}
-                placeholder="Optional"
-              />
-            </label>
-            <label className={labelClass}>
-              Illustrated product style
-              <select
-                value={draft.visual}
-                onChange={event =>
-                  update("visual", event.target.value as ProductVisualType)
-                }
-                className={inputClass}
-              >
-                {(
-                  [
-                    ["hoods", "Brake hoods"],
-                    ["valve", "Valve stem"],
-                    ["saddle", "Saddle"],
-                    ["tape", "Handlebar tape"],
-                    ["stem", "Stem"],
-                    ["stand", "Display stand"],
-                  ] as const
-                ).map(([value, label]) => (
-                  <option key={value} value={value} className="bg-[#111214]">
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={`${labelClass} sm:col-span-2`}>
-              Short subtitle
-              <input
-                data-editor-field="descriptor"
-                value={draft.descriptor}
-                onChange={event => update("descriptor", event.target.value)}
-                className={inputClass}
-              />
-            </label>
-            <label className={`${labelClass} sm:col-span-2`}>
-              Description
-              <textarea
-                data-editor-field="description"
-                value={draft.description}
-                onChange={event => update("description", event.target.value)}
-                className={`${inputClass} min-h-24 py-3`}
-              />
-            </label>
-            <label className={labelClass}>
-              Available finishes (separate with commas)
-              <input
-                data-editor-field="finishes"
-                value={draft.finishes.join(", ")}
-                onChange={event =>
-                  update(
-                    "finishes",
-                    event.target.value
-                      .split(",")
-                      .map(value => value.trim())
-                      .filter(Boolean)
-                  )
-                }
-                className={inputClass}
-              />
-            </label>
-            <div className="sm:col-span-2">
-              <p className={labelClass}>
-                Product photos{" "}
-                {gallery.length ? (
-                  <span className="text-white/40">({gallery.length})</span>
-                ) : null}
+        <div className="min-w-0 space-y-4">
+          <section className="border border-white/10 bg-[#0d0e10] p-4">
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-white">Item details</h3>
+              <p className="mt-1 text-xs text-white/45">
+                The name, category, price, and description customers see.
               </p>
-              <div className="mt-1.5 grid grid-cols-4 gap-2 sm:grid-cols-6">
-                {gallery.length === 0 ? (
-                  <p className="col-span-full border border-dashed border-white/15 px-3 py-4 text-[10px] font-bold uppercase tracking-[.14em] text-white/30">
-                    No photos yet. The storefront falls back to the illustrated
-                    visual below.
-                  </p>
-                ) : (
-                  gallery.map((value, index) => (
-                    <div key={value} className="relative">
-                      <button
-                        type="button"
-                        onClick={() => makeLead(value)}
-                        title={
-                          index === 0
-                            ? "Photo 1 is the lead shot"
-                            : `Make photo ${index + 1} the lead shot`
-                        }
-                        className={`block aspect-square w-full overflow-hidden border bg-[#161719] transition ${index === 0 ? "border-[#ff5a36]" : "border-white/10 hover:border-white/50"}`}
-                      >
-                        <img
-                          src={value}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      </button>
-                      {index === 0 ? (
-                        <span className="pointer-events-none absolute inset-x-0 bottom-0 block bg-[#ff5a36] py-0.5 text-center text-[9px] font-black uppercase tracking-[.1em] text-black">
-                          Lead shot
-                        </span>
-                      ) : null}
-                      <span className="pointer-events-none absolute left-1 top-1 grid size-5 place-items-center bg-black/80 text-[10px] font-black text-white">
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className={labelClass}>
+                Item name
+                <input
+                  data-editor-field="name"
+                  value={draft.name}
+                  onChange={event => update("name", event.target.value)}
+                  className={inputClass}
+                />
+              </label>
+              <label className={labelClass}>
+                Category
+                <input
+                  data-editor-field="category"
+                  value={draft.category}
+                  onChange={event => update("category", event.target.value)}
+                  className={inputClass}
+                />
+              </label>
+              <label className={labelClass}>
+                Price (PHP)
+                <input
+                  data-editor-field="price"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={draft.price}
+                  onChange={event =>
+                    update("price", Number(event.target.value))
+                  }
+                  className={inputClass}
+                />
+              </label>
+              <label className={labelClass}>
+                Badge{" "}
+                <span className="font-normal text-white/40">Optional</span>
+                <input
+                  data-editor-field="badge"
+                  value={draft.badge ?? ""}
+                  onChange={event => update("badge", event.target.value)}
+                  className={inputClass}
+                  placeholder="e.g. New drop"
+                />
+              </label>
+              <label className={`${labelClass} sm:col-span-2`}>
+                Description
+                <textarea
+                  data-editor-field="description"
+                  value={draft.description}
+                  onChange={event => update("description", event.target.value)}
+                  className={`${inputClass} min-h-24 py-3`}
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="border border-white/10 bg-[#0d0e10] p-4">
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-white">
+                Options and weight
+              </h3>
+              <p className="mt-1 text-xs text-white/45">
+                Set the choices and weight shown on the item page.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className={labelClass}>
+                Finishes{" "}
+                <span className="font-normal text-white/40">
+                  Comma-separated
+                </span>
+                <input
+                  data-editor-field="finishes"
+                  value={draft.finishes.join(", ")}
+                  onChange={event =>
+                    update(
+                      "finishes",
+                      event.target.value
+                        .split(",")
+                        .map(value => value.trim())
+                        .filter(Boolean)
+                    )
+                  }
+                  className={inputClass}
+                  placeholder="Graphite, Iced White"
+                />
+              </label>
+              <label className={labelClass}>
+                Weight{" "}
+                <span className="font-normal text-white/40">Optional</span>
+                <input
+                  value={weight}
+                  onChange={event => setWeight(event.target.value)}
+                  className={inputClass}
+                  placeholder="e.g. 118 g / pair"
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="border border-white/10 bg-[#0d0e10] p-4">
+            <div className="mb-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-white">Product photos</h3>
+                <span className="text-xs tabular-nums text-white/45">
+                  {gallery.length} {gallery.length === 1 ? "photo" : "photos"}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-white/45">
+                Drag photos to arrange their order. The first photo is the lead
+                image.
+              </p>
+            </div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={uploading}
+              onChange={event => {
+                const picked = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                void upload(picked);
+              }}
+              className="sr-only"
+              aria-label="Upload product photos"
+            />
+            {gallery.length > 0 ? (
+              <div className="mb-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
+                {gallery.map((value, index) => (
+                  <div
+                    key={value}
+                    className={`group/photo relative cursor-grab active:cursor-grabbing ${draggedImage === value ? "opacity-40" : ""}`}
+                    draggable
+                    onDragStart={event => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", value);
+                      setDraggedImage(value);
+                    }}
+                    onDragOver={event => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={event => {
+                      event.preventDefault();
+                      const source =
+                        event.dataTransfer.getData("text/plain") ||
+                        draggedImage;
+                      if (source) reorderImage(source, value);
+                      setDraggedImage(null);
+                    }}
+                    onDragEnd={() => setDraggedImage(null)}
+                  >
+                    <div
+                      className={`relative block aspect-square w-full overflow-hidden border bg-[#17191c] transition ${index === 0 ? "border-[#ff5a36]" : "border-white/10"}`}
+                    >
+                      <img
+                        src={value}
+                        alt={`Product photo ${index + 1}`}
+                        className="h-full w-full object-cover transition duration-300 group-hover/photo:scale-[1.03]"
+                      />
+                      <span className="absolute left-2 top-2 grid size-6 place-items-center bg-black/75 text-[10px] font-bold text-white">
                         {index + 1}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => removeImage(value)}
-                        aria-label={`Remove photo ${index + 1}`}
-                        title={`Remove photo ${index + 1}`}
-                        className="absolute right-1 top-1 grid size-5 place-items-center border border-white/50 bg-black/80 text-[12px] leading-none text-white transition hover:border-[#ff5a36] hover:bg-[#ff5a36] hover:text-black"
-                      >
-                        &times;
-                      </button>
+                      <span className="absolute right-9 top-2 grid size-6 place-items-center bg-black/65 text-white/80">
+                        <GripVertical size={14} aria-hidden="true" />
+                      </span>
+                      {index === 0 ? (
+                        <span className="absolute inset-x-0 bottom-0 bg-[#ff5a36] px-2 py-1 text-center text-[9px] font-bold uppercase tracking-[.12em] text-black">
+                          Lead photo
+                        </span>
+                      ) : null}
                     </div>
-                  ))
-                )}
+                    <button
+                      type="button"
+                      onClick={() => removeImage(value)}
+                      aria-label={`Remove photo ${index + 1}`}
+                      title="Remove photo"
+                      className="absolute right-2 top-2 grid size-6 place-items-center border border-white/20 bg-black/75 text-sm text-white transition hover:border-[#ff5a36] hover:bg-[#ff5a36] hover:text-black"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
               </div>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <label className={labelClass}>
-                  Lead photo URL (optional)
-                  <input
-                    data-editor-field="image"
-                    value={draft.image ?? ""}
-                    onChange={event =>
-                      setDraft(current => ({
-                        ...current,
-                        ...setLeadImage(current, event.target.value),
-                      }))
-                    }
-                    className={inputClass}
-                    placeholder="/path/image.jpg"
-                  />
-                  <span className="mt-1 flex items-center gap-2 text-[10px] normal-case tracking-normal text-white/35">
-                    <Upload size={12} />
-                    {uploading
-                      ? "Uploading..."
-                      : "Same as photo 1 in the strip above"}
-                  </span>
-                </label>
-                <div className={labelClass}>
-                  Add photos
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={event => {
-                      const picked = Array.from(event.target.files ?? []);
-                      event.target.value = "";
-                      void upload(picked);
-                    }}
-                    className="file:mr-3 file:rounded-none file:border-0 file:bg-[#ff5a36] file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:text-black"
-                  />
-                  <span className="mt-1 text-[10px] normal-case tracking-normal text-white/35">
-                    Photos run left to right, and photo 1 is the lead shot used
-                    on cards and in the drop. Tap a photo to promote it, or
-                    press its x to remove it. You can also paste a URL instead
-                    of uploading.
-                  </span>
-                </div>
+            ) : (
+              <div className="mb-4 flex flex-col items-center justify-center border border-dashed border-white/20 bg-white/[.02] px-5 py-8 text-center">
+                <ImagePlus size={24} className="text-white/45" />
+                <p className="mt-3 text-sm font-semibold text-white">
+                  No product photos yet
+                </p>
+                <p className="mt-1 text-xs text-white/45">
+                  Upload clear product images to create the shop gallery.
+                </p>
               </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <p className="text-xs text-white/45">
+                Drag photos to change their order. The first photo is the lead
+                image.
+              </p>
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex h-10 items-center justify-center gap-2 border border-white/20 bg-white/[.04] px-4 text-xs font-semibold text-white transition hover:border-[#ff5a36] hover:bg-[#ff5a36] hover:text-black disabled:cursor-wait disabled:opacity-60"
+              >
+                <Upload size={15} />
+                {uploading ? "Uploading photos…" : "Upload photos"}
+              </button>
+            </div>
+          </section>
+
+          <section className="border border-white/10 bg-[#0d0e10] p-4">
+            <div className="mb-4">
+              <p className="text-[10px] font-bold uppercase tracking-[.14em] text-white/45">
+                Gallery frame
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {(
+                  [
+                    ["wide", "Wide", "4:3"],
+                    ["portrait", "Portrait", "4:5"],
+                  ] as const
+                ).map(([value, label, ratio]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => updateGalleryFrame(value)}
+                    aria-pressed={galleryFrame === value}
+                    className={`flex min-h-14 items-center justify-between border px-4 text-left transition ${
+                      galleryFrame === value
+                        ? "border-[#ff5a36] bg-[#ff5a36]/10 text-white"
+                        : "border-white/10 bg-white/[.02] text-white/65 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold">
+                        {label}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-white/45">
+                        {ratio} aspect ratio
+                      </span>
+                    </span>
+                    <span
+                      className={`grid size-4 place-items-center rounded-full border ${
+                        galleryFrame === value
+                          ? "border-[#ff5a36] bg-[#ff5a36]"
+                          : "border-white/30"
+                      }`}
+                    >
+                      {galleryFrame === value ? (
+                        <span className="size-1.5 rounded-full bg-black" />
+                      ) : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-white/40">
+                Applies to all photos in this item’s gallery.
+              </p>
+            </div>
+            <div className="border-t border-white/10 pt-4">
+              <h3 className="text-sm font-bold text-white">
+                Adjust photo crop
+              </h3>
+              <p className="mt-1 text-xs text-white/45">
+                Choose a photo below, then drag it to reposition the crop.
+              </p>
             </div>
             <div className="sm:col-span-2">
-              <p className={labelClass}>
-                Photo crop
-                <span className="text-white/40">
-                  Pick a photo, then drag it to adjust how it appears
-                </span>
-              </p>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 {gallery.map((value, index) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => setFraming(value)}
-                    className={`border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[.12em] transition ${framing === value ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/50 hover:border-white/50 hover:text-white"}`}
+                    className={`border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[.12em] transition ${framingPhoto === value ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/50 hover:border-white/50 hover:text-white"}`}
                     title={`Adjust framing for photo ${index + 1}`}
                   >
                     {index + 1}
@@ -1147,137 +1298,207 @@ function ProductEditor({
                 ))}
               </div>
               <div className="mt-3 grid gap-4">
-                <div className="relative aspect-[4/5] overflow-hidden bg-[#161719] border border-white/15">
+                <div
+                  className="relative mx-auto w-full overflow-hidden border border-white/15 bg-[#161719]"
+                  style={{
+                    aspectRatio: productImageFrameRatio(galleryFrame),
+                    maxWidth: `${Math.round(
+                      520 * productImageFrameRatio(galleryFrame)
+                    )}px`,
+                  }}
+                >
                   <div
+                    className={`absolute inset-0 touch-none select-none ${dragStart ? "cursor-grabbing" : "cursor-grab"}`}
                     onPointerDown={handleDragStart}
                     onPointerMove={handleDragMove}
                     onPointerUp={handleDragEnd}
-                    onPointerLeave={handleDragEnd}
-                    onPointerUpCapture={handleDragEnd}
-                    style={{
-                      touchAction: "none",
-                      inset: 0,
-                      position: "absolute",
-                    }}
+                    onPointerCancel={handleDragEnd}
                   >
-                    <ProductVisual
-                      product={draft}
-                      src={framingPhotoRef.current}
-                      position={
-                        framingPhotoRef.current
-                          ? draft.image_positions?.[framingPhotoRef.current]
-                          : undefined
-                      }
-                      style={{
-                        transform: `scale(${zoom})`,
-                        transformOrigin: "center center",
-                        width: "100%",
-                        height: "100%",
-                      }}
-                    />
+                    {framingPhoto ? (
+                      <img
+                        src={framingPhoto}
+                        alt={`Crop preview for ${draft.name || "product"}`}
+                        draggable={false}
+                        onLoad={event => {
+                          const image = event.currentTarget;
+                          if (
+                            image.getAttribute("src") === framingPhoto &&
+                            image.naturalWidth > 0 &&
+                            image.naturalHeight > 0
+                          ) {
+                            setImageDimensions({
+                              width: image.naturalWidth,
+                              height: image.naturalHeight,
+                            });
+                          }
+                        }}
+                        style={{
+                          position: "absolute",
+                          width: `${imageWidthScale * 100}%`,
+                          height: `${imageHeightScale * 100}%`,
+                          maxWidth: "none",
+                          maxHeight: "none",
+                          left: `${(100 - imageWidthScale * 100) * (cropX / 100)}%`,
+                          top: `${(100 - imageHeightScale * 100) * (cropY / 100)}%`,
+                          objectFit: "fill",
+                          pointerEvents: "none",
+                        }}
+                      />
+                    ) : (
+                      <ProductVisual product={draft} />
+                    )}
                   </div>
                   <span className="absolute left-2 top-2 text-[10px] font-black uppercase tracking-[.14em] text-white/40">
-                    Drag to reposition — preview at card aspect
+                    Drag to reposition — storefront frame
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.14em] text-white/40">
-                  <span>Zoom</span>
-                  <button
-                    onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}
-                    className="border border-white/15 px-2 py-1 text-white/50 hover:text-white"
-                  >
-                    −
-                  </button>
-                  <span className="w-8 text-center">
-                    {Math.round(zoom * 100)}%
-                  </span>
-                  <button
-                    onClick={() => setZoom(Math.min(3, zoom + 0.25))}
-                    className="border border-white/15 px-2 py-1 text-white/50 hover:text-white"
-                  >
-                    +
-                  </button>
+                <div className="grid gap-4 border border-white/10 bg-black/20 p-4 sm:grid-cols-2">
+                  <label className="grid grid-cols-[auto_minmax(0,1fr)_3rem] items-center gap-3 text-[10px] font-bold uppercase tracking-[.12em] text-white/55 sm:col-span-2">
+                    <span>Zoom</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="3"
+                      step="0.01"
+                      value={zoom}
+                      onChange={event => setZoom(Number(event.target.value))}
+                      aria-label="Photo zoom"
+                      className="h-1.5 w-full cursor-pointer accent-[#ff5a36]"
+                    />
+                    <span className="text-right tabular-nums text-white/75">
+                      {Math.round((zoom - 1) * 100)}%
+                    </span>
+                  </label>
+                  <label className="grid grid-cols-[auto_minmax(0,1fr)_2.5rem] items-center gap-3 text-[10px] font-bold uppercase tracking-[.12em] text-white/55">
+                    <span>Horizontal</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={cropX}
+                      onChange={event =>
+                        updateCropPosition("x", Number(event.target.value))
+                      }
+                      disabled={!canAdjustCropX}
+                      aria-label="Horizontal photo position"
+                      className="h-1.5 w-full cursor-pointer accent-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-30"
+                    />
+                    <span className="text-right tabular-nums text-white/75">
+                      {Math.round(cropX)}%
+                    </span>
+                  </label>
+                  <label className="grid grid-cols-[auto_minmax(0,1fr)_2.5rem] items-center gap-3 text-[10px] font-bold uppercase tracking-[.12em] text-white/55">
+                    <span>Vertical</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={cropY}
+                      onChange={event =>
+                        updateCropPosition("y", Number(event.target.value))
+                      }
+                      disabled={!canAdjustCropY}
+                      aria-label="Vertical photo position"
+                      className="h-1.5 w-full cursor-pointer accent-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-30"
+                    />
+                    <span className="text-right tabular-nums text-white/75">
+                      {Math.round(cropY)}%
+                    </span>
+                  </label>
+                  <div className="flex items-center justify-between gap-3 sm:col-span-2">
+                    <p className="text-xs text-white/40">
+                      Drag the image or fine-tune its position with the sliders.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={resetCropPosition}
+                      disabled={!framingPhoto}
+                      className="shrink-0 border border-white/15 px-3 py-2 text-xs font-semibold text-white/65 transition hover:border-white/35 hover:text-white disabled:opacity-35"
+                    >
+                      Reset crop
+                    </button>
+                  </div>
                 </div>
-                <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">
-                  Current:{" "}
-                  {framingPhotoRef.current
-                    ? (draft.image_positions?.[framingPhotoRef.current] ??
-                      "50% 50%")
-                    : "50% 50%"}
-                </p>
               </div>
             </div>
-            <label className={`${labelClass} sm:col-span-2`}>
-              Product specifications, one per line
-              <input
-                data-editor-field="specs"
-                value={specText}
-                onChange={event => setSpecText(event.target.value)}
-                className={`${inputClass} min-h-24 py-3`}
-                placeholder="Fit: Road STI"
-              />
-            </label>
-            <label className={`${labelClass} sm:col-span-2`}>
-              Compatible bikes or parts (one per line)
-              <textarea
-                data-editor-field="fitment"
-                value={fitmentText}
-                onChange={event => setFitmentText(event.target.value)}
-                className={`${inputClass} min-h-24 py-3`}
-              />
-            </label>
-            <label className={`${labelClass} sm:col-span-2`}>
-              Compatibility heading
-              <input
-                data-editor-field="fitment"
-                value={draft.fitment.headline}
-                onChange={event =>
-                  update("fitment", {
-                    ...draft.fitment,
-                    headline: event.target.value,
-                  })
-                }
-                className={inputClass}
-              />
-            </label>
-            <label className={`${labelClass} sm:col-span-2`}>
-              Safety note
-              <input
-                data-editor-field="fitment"
-                value={draft.fitment.checkBeforeRide}
-                onChange={event =>
-                  update("fitment", {
-                    ...draft.fitment,
-                    checkBeforeRide: event.target.value,
-                  })
-                }
-                className={inputClass}
-              />
-            </label>
-          </div>
+          </section>
+
+          <details className="border border-white/10 bg-[#0d0e10] p-4">
+            <summary className="cursor-pointer text-sm font-bold text-white">
+              More settings
+              <span className="ml-2 text-xs font-normal text-white/40">
+                Fallback artwork and listing status
+              </span>
+            </summary>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className={labelClass}>
+                Fallback artwork
+                <select
+                  value={draft.visual}
+                  onChange={event =>
+                    update("visual", event.target.value as ProductVisualType)
+                  }
+                  className={inputClass}
+                >
+                  {(
+                    [
+                      ["hoods", "Brake hoods"],
+                      ["valve", "Valve stem"],
+                      ["saddle", "Saddle"],
+                      ["tape", "Handlebar tape"],
+                      ["stem", "Stem"],
+                      ["stand", "Display stand"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <option key={value} value={value} className="bg-[#111214]">
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs font-normal text-white/40">
+                  Used only when no product photo is set.
+                </span>
+              </label>
+              <div className="flex flex-col justify-center gap-3">
+                <label className="flex items-center gap-2 text-xs text-white/65">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(draft.featured)}
+                    onChange={event => update("featured", event.target.checked)}
+                  />
+                  Feature in the drop
+                </label>
+                <label className="flex items-center gap-2 text-xs text-white/65">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(draft.archived)}
+                    onChange={event => update("archived", event.target.checked)}
+                  />
+                  Archive this item
+                </label>
+              </div>
+            </div>
+          </details>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-5 border-t border-white/10 px-5 py-4">
-        <label className="flex items-center gap-2 text-xs text-white/65">
-          <input
-            type="checkbox"
-            checked={Boolean(draft.featured)}
-            onChange={event => update("featured", event.target.checked)}
-          />
-          Featured in the drop
-        </label>
-        <label className="flex items-center gap-2 text-xs text-white/65">
-          <input
-            type="checkbox"
-            checked={Boolean(draft.archived)}
-            onChange={event => update("archived", event.target.checked)}
-          />
-          Archived
-        </label>
+      <div className="flex flex-wrap items-center gap-3 border-t border-white/10 bg-[#0d0e10] px-5 py-4">
+        <p className="mr-auto text-xs text-white/40">
+          The shop URL is generated automatically for new items.
+        </p>
         <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex h-10 items-center border border-white/15 px-4 text-xs font-semibold text-white/70 hover:border-white/40 hover:text-white"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
           onClick={save}
           disabled={saving || !draft.name.trim()}
-          className="ml-auto inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black disabled:opacity-50"
+          className="inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-5 text-xs font-bold text-black disabled:opacity-50"
         >
           {saving ? (
             "Saving..."
@@ -2023,8 +2244,9 @@ function RoleManager({
 }
 
 export default function Admin() {
-  const { user, profile, loading, isConfigured } = useAuth();
+  const { user, profile, loading, isConfigured, signOut } = useAuth();
   const { refresh: refreshCatalog } = useCatalog();
+  const [, navigate] = useLocation();
   const [section, setSection] = useState<Section>("overview");
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
   const [orders, setOrders] = useState<AdminOrder[]>([]);
@@ -2069,6 +2291,17 @@ export default function Admin() {
     if (profile?.role === "admin") void load();
   }, [load, profile?.role]);
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      navigate("/sign-in", { replace: true });
+    } catch (error) {
+      toast.error("Sign-out failed.", {
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+      });
+    }
+  };
+
   const counts = useMemo(
     () => ({
       open: orders.filter(
@@ -2101,13 +2334,13 @@ export default function Admin() {
 
   if (loading)
     return (
-      <section className="flex min-h-screen items-center justify-center bg-[#0c0d0e] pt-[68px] text-sm text-white/50">
+      <section className="flex min-h-screen items-center justify-center bg-[#0c0d0e] text-sm text-white/50">
         Loading administration...
       </section>
     );
   if (!user || profile?.role !== "admin")
     return (
-      <section className="flex min-h-screen items-end bg-[#0c0d0e] px-4 pb-16 pt-28 sm:px-6 lg:px-9">
+      <section className="flex min-h-screen items-end bg-[#0c0d0e] px-4 pb-16 pt-16 sm:px-6 lg:px-9">
         <div>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.16em] text-[#ff5a36]">
             <ShieldCheck size={14} />
@@ -2133,9 +2366,9 @@ export default function Admin() {
     );
 
   return (
-    <section className="admin-shell min-h-screen pt-[68px]">
+    <section className="admin-shell min-h-screen">
       <div className="admin-topbar border-b px-4 py-6 sm:px-6 lg:px-9">
-        <div className="mx-auto flex max-w-[1440px] flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.12em] text-[#ff5a36]">
               Underrated Cycling Co.
@@ -2147,18 +2380,27 @@ export default function Admin() {
               Manage orders, shop items, homepage content, and staff access.
             </p>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-[#111214] px-4 py-3 shadow-sm">
-            <ShieldCheck size={16} className="text-[#ff5a36]" />
-            <div>
-              <p className="text-sm font-bold text-white">
-                {profile.full_name || user.email}
-              </p>
-              <p className="mt-1 text-xs text-white/45">Administrator</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-[#111214] px-4 py-3 shadow-sm">
+              <ShieldCheck size={16} className="text-[#ff5a36]" />
+              <div>
+                <p className="text-sm font-bold text-white">
+                  {profile.full_name || user.email}
+                </p>
+                <p className="mt-1 text-xs text-white/45">Administrator</p>
+              </div>
             </div>
+            <button
+              onClick={() => void handleSignOut()}
+              className="inline-flex items-center gap-2 border border-white/15 px-4 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/60 transition hover:border-[#ff5a36] hover:text-[#ff5a36]"
+            >
+              <LogOut size={14} />
+              Sign out
+            </button>
           </div>
         </div>
       </div>
-      <div className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[220px_1fr] lg:px-9">
+      <div className="grid gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[220px_1fr] lg:px-9">
         <aside
           className="admin-nav flex gap-2 overflow-x-auto lg:block lg:space-y-1"
           aria-label="Administration sections"

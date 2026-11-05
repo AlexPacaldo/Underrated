@@ -36,9 +36,9 @@ export default function SignIn() {
               <>
                 <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/50"><ShieldCheck size={14} className="text-[#ff5a36]" />Signed in</p>
                 <h2 className="mt-5 font-display text-5xl uppercase leading-[.78] text-white">You are<br />already in.</h2>
-                <p className="mt-4 text-sm leading-6 text-white/45">{profile?.full_name || user.email} is ready to use the account dashboard.</p>
-                <Link href="/account" className="mt-7 inline-flex w-full items-center justify-center gap-2 bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white">
-                  Open dashboard <ArrowRight size={15} />
+                <p className="mt-4 text-sm leading-6 text-white/45">{profile?.full_name || user.email} is ready to use the {profile?.role === "admin" ? "store administration" : "account dashboard"}.</p>
+                <Link href={profile?.role === "admin" ? "/admin" : "/account"} className="mt-7 inline-flex w-full items-center justify-center gap-2 bg-[#ff5a36] px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-white">
+                  {profile?.role === "admin" ? "Open administration" : "Open dashboard"} <ArrowRight size={15} />
                 </Link>
               </>
             ) : (

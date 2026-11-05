@@ -39,7 +39,7 @@ export const defaultHomepageContent: HomepageContent = {
   hero_title: "Make the",
   hero_accent: "build",
   hero_suffix: "yours.",
-  hero_description: "Small parts change the whole build. Find the grip, color, and hardware that reads like you.",
+  hero_description: "Small parts change the whole build. Find the grip, color, and hardware that make it yours.",
   drop_label: "Just landed",
   drop_title: "Latest",
   drop_accent: "drop.",

@@ -100,7 +100,7 @@ export default function CartDrawer() {
   const displayedTotal = manualOrder ? manualOrder.total_cents / 100 : estimatedTotal;
   const unavailableLines = cart.filter((line) => !products.some((product) => product.id === line.id));
   const hasUnavailableLines = unavailableLines.length > 0;
-  const exchangeRatePending = currency !== "PHP" && !rateReady;
+  const exchangeRatePending = !rateReady;
   const checkoutBlocked =
     hasUnavailableLines || exchangeRatePending || !paypalAvailable;
 
@@ -147,7 +147,7 @@ export default function CartDrawer() {
     }
 
     if (exchangeRatePending) {
-      toast.error("Exchange rate is still loading.", { description: "Wait a moment, or switch back to PHP to continue." });
+      toast.error("Exchange rate is still loading.", { description: "Wait a moment for the USD rate and try again." });
       return;
     }
 
@@ -344,6 +344,8 @@ export default function CartDrawer() {
                 <>
                   <PaymentReferenceForm
                     totalCents={manualOrder.total_cents}
+                    displayCurrency={manualOrder.display_currency}
+                    fxRate={manualOrder.fx_rate}
                     referenceNumber={referenceNumber}
                     onReferenceNumberChange={setReferenceNumber}
                     payerName={payerName}
@@ -366,7 +368,7 @@ export default function CartDrawer() {
               </div>
               {addressIsValid ? <p className="mt-2.5 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-white/35"><PackageCheck size={13} className="text-[#ff5a36]" />{selectedRegion.label} · {selectedRegion.timing}</p> : null}
               {hasUnavailableLines ? <p className="mt-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">Remove the unavailable part{unavailableLines.length > 1 ? "s" : ""} above before checking out.</p> : null}
-              {exchangeRatePending ? <p className="mt-3 border border-white/10 bg-white/[.03] p-3 text-xs leading-5 text-white/55">Updating the {currency} exchange rate. Checkout unlocks once it loads, or switch back to PHP.</p> : null}
+              {exchangeRatePending ? <p className="mt-3 border border-white/10 bg-white/[.03] p-3 text-xs leading-5 text-white/55">Updating the USD exchange rate. Checkout unlocks once it loads.</p> : null}
               {!paypalAvailable ? <p className="mt-3 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-3 text-xs leading-5 text-[#ff5a36]">PayPal is not configured yet, so checkout is temporarily unavailable. Please contact the store for help.</p> : null}
               <button onClick={handleCreateOrder} disabled={cart.length === 0 || creatingOrder || checkoutBlocked} className="mt-4 w-full bg-white px-5 py-4 text-xs font-black uppercase tracking-[0.16em] text-black transition hover:bg-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]">{creatingOrder ? "Placing order..." : user ? "Place order" : "Sign in to continue"}</button>
               <p className="mt-3 text-center text-[10px] leading-relaxed text-white/35">Shipping is an estimate. Orders are fulfilled after manual payment verification.</p>

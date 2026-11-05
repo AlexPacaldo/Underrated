@@ -12,7 +12,7 @@ export const productPreviewMetricsMessage = "product-preview:metrics";
 export const productPreviewSelectMessage = "product-preview:select";
 
 /** Every part of the item view an editor can jump to from the preview frame. */
-export const productPreviewFields = ["name", "category", "price", "badge", "image", "descriptor", "description", "finishes", "specs", "fitment"] as const;
+export const productPreviewFields = ["name", "category", "price", "badge", "image", "description", "finishes"] as const;
 
 export type ProductPreviewField = typeof productPreviewFields[number];
 

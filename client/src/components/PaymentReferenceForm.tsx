@@ -16,6 +16,8 @@ const headingClass =
 
 type PaymentReferenceFormProps = {
   totalCents: number;
+  displayCurrency?: string;
+  fxRate?: number;
   referenceNumber: string;
   onReferenceNumberChange: (value: string) => void;
   payerName: string;
@@ -26,6 +28,8 @@ type PaymentReferenceFormProps = {
 
 export default function PaymentReferenceForm({
   totalCents,
+  displayCurrency,
+  fxRate,
   referenceNumber,
   onReferenceNumberChange,
   payerName,
@@ -33,8 +37,9 @@ export default function PaymentReferenceForm({
   note,
   onNoteChange,
 }: PaymentReferenceFormProps) {
-  const { formatMoney } = useCurrency();
-  const totalLabel = formatMoney(totalCents / 100, "PHP", 1);
+  const { currency, formatMoney } = useCurrency();
+  const paymentCurrency = displayCurrency ?? currency;
+  const totalLabel = formatMoney(totalCents / 100, paymentCurrency, fxRate);
 
   return (
     <>
@@ -67,7 +72,7 @@ export default function PaymentReferenceForm({
       </div>
 
       <p className="text-xs leading-relaxed text-white/50">
-        Pay the exact PHP total of{" "}
+        Pay the exact {paymentCurrency} total of{" "}
         <span className="font-bold text-white">{totalLabel}</span>. We’ll verify
         the PayPal transaction before preparing your order.
       </p>

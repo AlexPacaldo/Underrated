@@ -1,5 +1,5 @@
 .admin-shell {
-  min-height: calc(100vh - 68px);
+  min-height: 100vh;
   background: #0c0d0e;
   color: #f4f0ea;
 }
@@ -107,7 +107,7 @@
 @media (min-width: 1024px) {
   .admin-shell .admin-nav {
     position: sticky;
-    top: 88px;
+    top: 24px;
   }
 }
 

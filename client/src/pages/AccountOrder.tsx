@@ -254,7 +254,7 @@ export default function AccountOrder() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#ff5a36]">Awaiting payment</p>
-                      <p className="mt-2 text-xs leading-5 text-white/55">Send the exact PHP total, then submit the transaction reference so the order can move to fulfillment.</p>
+                      <p className="mt-2 text-xs leading-5 text-white/55">Send the exact {order.display_currency} total, then submit the transaction reference so the order can move to fulfillment.</p>
                     </div>
                     {!showPayment ? <button type="button" onClick={() => setShowPayment(true)} className="bg-[#ff5a36] px-5 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-black transition hover:bg-white">Pay now</button> : null}
                   </div>
@@ -263,6 +263,8 @@ export default function AccountOrder() {
                     <div className="mt-5 grid gap-4 border-t border-white/10 pt-5">
                       <PaymentReferenceForm
                         totalCents={order.total_cents}
+                        displayCurrency={order.display_currency}
+                        fxRate={order.fx_rate}
                         referenceNumber={referenceNumber}
                         onReferenceNumberChange={setReferenceNumber}
                         payerName={payerName}
@@ -293,7 +295,7 @@ export default function AccountOrder() {
                   <div className="mt-1 border-t border-white/10 pt-3">
                     <SummaryRow label="Order total" value={money(order.total_cents)} emphasis />
                   </div>
-                  <p className="text-[10px] leading-5 text-white/30">Charged in {order.currency} at the rate saved when the order was placed.</p>
+                  <p className="text-[10px] leading-5 text-white/30">Displayed in {order.display_currency} at the rate saved when the order was placed.</p>
                 </div>
               </section>
 

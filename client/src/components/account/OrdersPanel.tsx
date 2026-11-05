@@ -12,46 +12,59 @@ import OrderItemVisual from "@/components/account/OrderItemVisual";
 import OrderStatusBadge from "@/components/account/OrderStatusBadge";
 import { cn } from "@/lib/utils";
 
-function OrderRow({ order }: { order: AccountOrder }) {
+function OrderCard({ order }: { order: AccountOrder }) {
   const { formatMoney } = useCurrency();
-  const lead = order.order_items[0];
-  const extraLines = Math.max(0, order.order_items.length - 1);
   const payment = latestPaymentSubmission(order);
+  const itemCount = order.order_items.reduce((count, item) => count + item.quantity, 0);
+  const orderHref = `/account/orders/${order.order_number}`;
+  const money = (cents: number) => formatMoney(cents / 100, order.display_currency, order.fx_rate);
 
   return (
-    <article className="border-b border-white/10">
-      <Link href={`/account/orders/${order.order_number}`} className="group grid gap-4 py-5 transition hover:bg-white/[.02] sm:grid-cols-[auto_1fr_auto] sm:items-start sm:px-2">
-        <div className="relative size-20 shrink-0 overflow-hidden bg-[#1a1b1e]">
-          {lead ? <OrderItemVisual item={lead} className="size-20" /> : <div className="grid size-20 place-items-center text-white/20"><Package size={20} /></div>}
-          {extraLines > 0 ? (
-            <span className="absolute bottom-0 right-0 bg-black/70 px-1.5 py-0.5 text-[10px] font-black tracking-[0.1em] text-white">+{extraLines}</span>
-          ) : null}
+    <article className="border border-white/15 bg-[#101113]">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 px-4 py-3.5">
+        <div className="flex items-center gap-3">
+          <Link href={orderHref} className="font-display text-2xl uppercase leading-none text-white transition hover:text-[#ff5a36]">{order.order_number}</Link>
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/30">{itemCount} {itemCount === 1 ? "item" : "items"}</span>
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/30">{formatOrderDate(order.created_at)}</p>
+          <OrderStatusBadge status={order.status} />
+        </div>
+      </div>
 
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <p className="font-display text-2xl uppercase leading-none text-white">{order.order_number}</p>
-            <OrderStatusBadge status={order.status} />
+      <div className="divide-y divide-white/10">
+        {order.order_items.length ? order.order_items.map((item) => (
+          <div key={item.id} className="flex items-center gap-4 px-4 py-4">
+            <OrderItemVisual item={item} className="size-16 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold text-white">{item.product_name}</p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white/35">{item.finish} / Qty {item.quantity}</p>
+            </div>
+            <p className="shrink-0 text-sm font-bold text-white">{money(item.line_total_cents)}</p>
           </div>
-          <p className="mt-2 truncate text-xs text-white/45">
-            {lead ? `${lead.quantity} x ${lead.product_name} / ${lead.finish}` : "No lines on this order"}
-            {extraLines > 0 ? ` + ${extraLines} more` : ""}
-          </p>
-          {order.shipping_address ? <p className="mt-1 truncate text-xs text-white/35">{formatDeliveryAddress(order.shipping_address)}</p> : null}
-          {payment ? <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-white/30">{paymentMethodLabels[payment.payment_method]} / {payment.reference_number}</p> : null}
-        </div>
+        )) : (
+          <div className="flex items-center gap-4 px-4 py-4">
+            <div className="grid size-16 shrink-0 place-items-center bg-[#1a1b1e] text-white/20"><Package size={18} /></div>
+            <p className="text-sm text-white/45">No lines on this order</p>
+          </div>
+        )}
+      </div>
 
-        <div className="flex items-end justify-between gap-4 sm:flex-col sm:items-end sm:gap-2">
+      <div className="flex flex-col gap-4 border-t border-white/10 px-4 py-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          {order.shipping_address ? <p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-white/30">{formatDeliveryAddress(order.shipping_address)}</p> : null}
+          {payment ? <p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-white/25">{paymentMethodLabels[payment.payment_method]} / {payment.reference_number}</p> : null}
+        </div>
+        <div className="flex items-end justify-between gap-4 sm:flex-col sm:items-end sm:gap-3">
           <div className="sm:text-right">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/35">Order total</p>
-            <p className="mt-1 font-display text-2xl leading-none text-white">{formatMoney(order.total_cents / 100, order.display_currency, order.fx_rate)}</p>
-            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white/30">{formatOrderDate(order.created_at)}</p>
+            <p className="mt-1 font-display text-3xl leading-none text-white">{money(order.total_cents)}</p>
           </div>
-          <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/30 transition group-hover:text-[#ff5a36]">
-            Details <ChevronRight size={13} />
-          </span>
+          <Link href={orderHref} className="inline-flex items-center gap-2 border border-white/20 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-white/70 transition hover:border-[#ff5a36] hover:text-[#ff5a36]">
+            View order <ChevronRight size={13} />
+          </Link>
         </div>
-      </Link>
+      </div>
     </article>
   );
 }
@@ -101,9 +114,9 @@ export default function OrdersPanel({ orders, loading, error }: { orders: Accoun
         </div>
       ) : null}
 
-      <div>
+      <div className="space-y-4 pt-5">
         {visible.map((order) => (
-          <OrderRow key={order.id} order={order} />
+          <OrderCard key={order.id} order={order} />
         ))}
       </div>
     </section>

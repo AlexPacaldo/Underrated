@@ -3,11 +3,11 @@
  */
 import type { Product, ProductImagePosition } from "@/data/products";
 
-export default function ProductVisual({ product, compact = false, src, position, style }: { product: Product; compact?: boolean; src?: string; position?: ProductImagePosition; style?: React.CSSProperties }) {
+export default function ProductVisual({ product, compact = false, src, position, style, onLoad }: { product: Product; compact?: boolean; src?: string; position?: ProductImagePosition; style?: React.CSSProperties; onLoad?: React.ReactEventHandler<HTMLImageElement> }) {
   const image = src ?? product.image;
 
   if (image) {
-    return <img src={image} alt={product.name} style={{ objectPosition: position ?? "center", pointerEvents: "none", ...style }} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]" />;
+    return <img src={image} alt={product.name} style={{ objectPosition: position ?? "center", pointerEvents: "none", ...style }} onLoad={onLoad} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]" />;
   }
 
   return (

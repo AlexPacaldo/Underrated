@@ -80,6 +80,6 @@ export default function ProductPreview() {
         </div>
       </div>
     </section>
-    <ProductDetailView product={product} preview={{ active: field, onSelect: select }} topOffset={false} backHref="/shop" backLabel="Back to index" />
+    <ProductDetailView product={product} preview={{ active: field, onSelect: select }} topOffset={false} backHref="/shop" backLabel="Shop" />
   </div>;
 }

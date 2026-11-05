@@ -8,11 +8,23 @@ export const productImagePositions = ["top left", "top", "top right", "left", "c
 
 export type ProductImagePosition = (typeof productImagePositions)[number] | `${number}% ${number}%`;
 
+export const productImageFrames = ["wide", "portrait"] as const;
+
+export type ProductImageFrame = (typeof productImageFrames)[number];
+
+export function isProductImageFrame(value: unknown): value is ProductImageFrame {
+  return productImageFrames.some(frame => frame === value);
+}
+
+export function productImageFrameRatio(frame?: ProductImageFrame) {
+  return frame === "portrait" ? 4 / 5 : 4 / 3;
+}
+
 export function isProductImagePosition(value: unknown): value is ProductImagePosition {
   if (typeof value !== "string") return false;
   if ((productImagePositions as readonly string[]).includes(value)) return true;
   // Also accept percentage format like "50% 50%"
-  return /^\d+%\s+\d+%$/.test(value);
+  return /^\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%$/.test(value);
 }
 
 /** Every photo in order, the primary first. Framing is keyed by url, so this is the list positions are kept against. */
@@ -37,6 +49,18 @@ export function normalizeImagePositions(photos: string[], positions: unknown): P
   return result;
 }
 
+/** Keeps a frame choice only for photos that still exist. Missing choices use the wide default. */
+export function normalizeImageFrames(photos: string[], frames: unknown): Partial<Record<string, ProductImageFrame>> {
+  const result: Partial<Record<string, ProductImageFrame>> = {};
+  if (!frames || typeof frames !== "object") return result;
+  const source = frames as Record<string, unknown>;
+  for (const photo of photos) {
+    const value = source[photo];
+    if (isProductImageFrame(value)) result[photo] = value;
+  }
+  return result;
+}
+
 export type Product = {
   id: string;
   slug: string;
@@ -52,6 +76,8 @@ export type Product = {
   images?: string[];
   /** Which part of each photo to keep when a frame crops it, keyed by photo url. */
   image_positions?: Partial<Record<string, ProductImagePosition>>;
+  /** Which display frame each photo uses, keyed by photo url. */
+  image_frames?: Partial<Record<string, ProductImageFrame>>;
   visual: ProductVisual;
   specs: { label: string; value: string }[];
   fitment: {
@@ -217,7 +243,7 @@ export const products: Product[] = [
 export const categories: CatalogCategory[] = [
   { name: "Cockpit", index: "01", note: "Tape · Stems · Control" },
   { name: "Hoods", index: "02", note: "Grip · Shape · Signal" },
-  { name: "Valve Caps", index: "03", note: "Small parts · Big read" },
+  { name: "Valve Caps", index: "03", note: "Small parts · Big impact" },
   { name: "Saddles", index: "04", note: "Contact · Profile · Pace" },
 ];
 

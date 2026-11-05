@@ -44,8 +44,8 @@ export default function Shop() {
       <div className="relative overflow-hidden border-b border-white/15 bg-[#101113] px-4 py-11 sm:px-6 lg:px-9 lg:py-16">
         <span aria-hidden="true" className="pointer-events-none absolute right-[-.08em] top-[-.25em] font-display text-[clamp(9rem,25vw,26rem)] uppercase leading-none text-white/[.025]">Index</span>
         <div className="mx-auto max-w-[1440px]">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#ff5a36]">Parts index / 2026</p>
-          <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="font-display text-6xl uppercase leading-[0.78] tracking-[-0.055em] text-white sm:text-8xl">The <em className="text-[#ff5a36]">shop</em></h1><p className="mt-5 max-w-sm text-sm leading-relaxed text-white/45">Contact points, cockpit details, and the small pieces that make a build read differently.</p></div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">{products.length.toString().padStart(2, "0")} current components</p></div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#ff5a36]">Parts index</p>
+          <div className="mt-3"><div><h1 className="font-display text-6xl uppercase leading-[0.78] tracking-[-0.055em] text-white sm:text-8xl">The <em className="text-[#ff5a36]">shop</em></h1><p className="mt-5 max-w-sm text-sm leading-relaxed text-white/45">Small parts that shape the whole build.</p></div></div>
         </div>
       </div>
 
@@ -60,8 +60,7 @@ export default function Shop() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-l border-[#ff5a36] py-5 pl-3"><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">{shownProducts.length.toString().padStart(2, "0")} {shownProducts.length === 1 ? "component" : "components"}</p><p className="hidden text-[10px] font-bold uppercase tracking-[.14em] text-white/35 sm:block">Select a detail. Make the build read.</p></div>
-        {shownProducts.length ? <div className="grid grid-cols-1 gap-x-4 gap-y-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-x-6 lg:gap-y-12">{shownProducts.map((product, index) => <div className="reveal-up" key={product.id}><ProductCard product={product} priority={index < 3} /></div>)}</div> : <div className="flex min-h-80 flex-col justify-end border-y border-white/15 pb-9"><span className="font-display text-6xl uppercase leading-[.75] text-white/15">Nothing<br />found.</span><p className="mt-5 text-sm text-white/45">Try a broader word or clear your filters.</p><button onClick={() => { selectCategory("All"); setQuery(""); }} className="mt-5 w-fit border border-[#ff5a36] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[#ff5a36] hover:bg-[#ff5a36] hover:text-black">Reset shop</button></div>}
+        <div className="grid grid-cols-1 gap-x-4 gap-y-10 pt-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-x-6 lg:gap-y-12">{shownProducts.map((product, index) => <div className="reveal-up" key={product.id}><ProductCard product={product} priority={index < 3} /></div>)}</div>
       </div>
     </section>
   );
