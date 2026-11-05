@@ -35,7 +35,9 @@ function StorefrontRoutes() {
 
   if (!loading && profile?.role === "admin" && !isPreview) return null;
 
-  return <StoreLayout><Switch><Route path="/" component={Home} /><Route path="/shop" component={Shop} /><Route path="/product/:slug" component={ProductDetail} /><Route path="/sign-in" component={SignIn} /><Route path="/account" component={Account} /><Route path="/account/orders/:orderNumber" component={AccountOrder} /><Route path={homepagePreviewPath} component={HomepagePreview} /><Route path={productPreviewPath} component={ProductPreview} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch></StoreLayout>;
+  const routes = <Switch><Route path="/" component={Home} /><Route path="/shop" component={Shop} /><Route path="/product/:slug" component={ProductDetail} /><Route path="/sign-in" component={SignIn} /><Route path="/account" component={Account} /><Route path="/account/orders/:orderNumber" component={AccountOrder} /><Route path={homepagePreviewPath} component={HomepagePreview} /><Route path={productPreviewPath} component={ProductPreview} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
+
+  return location === productPreviewPath ? routes : <StoreLayout>{routes}</StoreLayout>;
 }
 
 function Router() {

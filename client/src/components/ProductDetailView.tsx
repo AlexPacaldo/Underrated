@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 
-export default function ProductDetailView({ product, onAdd, preview, topOffset = true, backHref = "/shop", backLabel = "Shop" }: { product: Product; onAdd?: (product: Product, finish: string, quantity: number) => void; preview?: ProductPreviewMode | null; topOffset?: boolean; backHref?: string; backLabel?: string }) {
+export default function ProductDetailView({ product, onAdd, preview, topOffset = true, minHeight = true, backHref = "/shop", backLabel = "Shop" }: { product: Product; onAdd?: (product: Product, finish: string, quantity: number) => void; preview?: ProductPreviewMode | null; topOffset?: boolean; minHeight?: boolean; backHref?: string; backLabel?: string }) {
   const { formatMoney } = useCurrency();
   const [finish, setFinish] = useState(product.finishes[0] ?? "");
   const [quantity, setQuantity] = useState(1);
@@ -33,7 +33,7 @@ export default function ProductDetailView({ product, onAdd, preview, topOffset =
   };
 
   return (
-    <section className={`min-h-screen ${topOffset ? "pt-[68px]" : ""}`}>
+    <section className={`${minHeight ? "min-h-screen " : ""}${topOffset ? "pt-[68px]" : ""}`}>
       <div className="mx-auto max-w-[1200px] px-4 pb-16 pt-5 sm:px-6 lg:px-9 lg:pt-8">
         <Link href={backHref} className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.15em] text-white/45 transition hover:text-[#ff5a36]"><ArrowLeft size={14} /> Back to {backLabel.toLowerCase()}</Link>
 
@@ -95,7 +95,11 @@ export default function ProductDetailView({ product, onAdd, preview, topOffset =
             </div>
 
             <PreviewField field="description" label="Description" preview={preview}>
-              <p className="mt-5 max-w-[58ch] text-sm leading-7 text-white/50">{product.description}</p>
+              <div className="mt-5 max-w-[58ch] space-y-4 text-sm leading-7 text-white/50">
+                {product.description.split(/\r?\n(?:[ \t]*\r?\n)+/).map((paragraph, index) => (
+                  <p key={index} className="whitespace-pre-line">{paragraph}</p>
+                ))}
+              </div>
             </PreviewField>
           </div>
         </div>

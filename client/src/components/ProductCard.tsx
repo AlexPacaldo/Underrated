@@ -13,6 +13,11 @@ import type { ProductPreviewMode } from "@/lib/productPreview";
 export default function ProductCard({ product, preview }: { product: Product; priority?: boolean; preview?: ProductPreviewMode | null }) {
   const { addToCart } = useStore();
   const { formatMoney } = useCurrency();
+  const leadImage = product.image;
+  const galleryFrame = leadImage ? product.image_frames?.[leadImage] ?? "wide" : "wide";
+  const cropPosition = leadImage
+    ? galleryFrame === "portrait" ? product.image_positions?.[leadImage] : product.card_image_position
+    : undefined;
 
   return (
     <article className="group">
@@ -20,7 +25,10 @@ export default function ProductCard({ product, preview }: { product: Product; pr
         <PreviewField field="image" label="Photos" preview={preview}>
           <Link href={`/product/${product.slug}`} className="block">
             <div className="product-card-media relative aspect-[4/5] overflow-hidden bg-[#161719]">
-              <ProductVisual product={product} position={product.image_positions?.[product.image ?? ""]} />
+              <ProductVisual
+                product={product}
+                position={cropPosition}
+              />
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
               {product.badge ? <span className="product-image-label absolute left-3 top-3 border border-white/30 bg-black/55 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white backdrop-blur-sm">{product.badge}</span> : null}
             </div>

@@ -27,6 +27,23 @@ export function isProductImagePosition(value: unknown): value is ProductImagePos
   return /^\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%$/.test(value);
 }
 
+export function productImagePositionCoordinates(position?: ProductImagePosition): [number, number] {
+  if (!position) return [50, 50];
+  const percentages = position.match(/^(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/);
+  if (percentages) return [Number(percentages[1]), Number(percentages[2])];
+
+  const parts = position.split(" ");
+  const horizontal = parts.find(part => ["left", "right"].includes(part));
+  const vertical = parts.find(part => ["top", "bottom"].includes(part));
+  const x = horizontal === "left" ? 0 : horizontal === "right" ? 100 : 50;
+  const y = vertical === "top" ? 0 : vertical === "bottom" ? 100 : 50;
+  return [x, y];
+}
+
+export function formatProductImagePosition(x: number, y: number): ProductImagePosition {
+  return `${x.toFixed(2)}% ${y.toFixed(2)}%` as ProductImagePosition;
+}
+
 /** Every photo in order, the primary first. Framing is keyed by url, so this is the list positions are kept against. */
 export function productPhotos(product: Pick<Product, "image" | "images">) {
   const photos: string[] = [];
@@ -76,6 +93,8 @@ export type Product = {
   images?: string[];
   /** Which part of each photo to keep when a frame crops it, keyed by photo url. */
   image_positions?: Partial<Record<string, ProductImagePosition>>;
+  /** Independent crop used by the shop card when the gallery uses a wide frame. */
+  card_image_position?: ProductImagePosition;
   /** Which display frame each photo uses, keyed by photo url. */
   image_frames?: Partial<Record<string, ProductImageFrame>>;
   visual: ProductVisual;

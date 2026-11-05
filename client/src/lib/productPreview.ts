@@ -2,14 +2,17 @@
  * Design direction: Technical Drop Editorial — the admin item editor and its preview frame talk over one small typed message protocol.
  */
 import type { Product, ProductVisual, ProductImagePosition } from "@/data/products";
-import { productImagePositions, isProductImagePosition } from "@/data/products";
+import { isProductImageFrame, isProductImagePosition } from "@/data/products";
 
 export const productPreviewPath = "/admin/product-preview";
 
 export const productPreviewProductMessage = "product-preview:product";
+export const productPreviewViewMessage = "product-preview:view";
 export const productPreviewReadyMessage = "product-preview:ready";
 export const productPreviewMetricsMessage = "product-preview:metrics";
 export const productPreviewSelectMessage = "product-preview:select";
+
+export type ProductPreviewView = "page" | "card";
 
 /** Every part of the item view an editor can jump to from the preview frame. */
 export const productPreviewFields = ["name", "category", "price", "badge", "image", "description", "finishes"] as const;
@@ -61,6 +64,7 @@ export function readPreviewProduct(data: unknown): Product | null {
   const image = typeof row.image === "string" && row.image.trim() ? row.image : undefined;
   const images = imageList(row.images);
   const imagePositions: Partial<Record<string, ProductImagePosition>> = {};
+  const imageFrames: Partial<Record<string, "wide" | "portrait">> = {};
   const rawPositions = row.image_positions;
   if (rawPositions && typeof rawPositions === "object") {
     const source = rawPositions as Record<string, unknown>;
@@ -71,6 +75,13 @@ export function readPreviewProduct(data: unknown): Product | null {
       }
     }
   }
+  if (row.image_frames && typeof row.image_frames === "object") {
+    const source = row.image_frames as Record<string, unknown>;
+    for (const key of Object.keys(source)) {
+      if (isProductImageFrame(source[key])) imageFrames[key] = source[key];
+    }
+  }
+  const cardImagePosition = isProductImagePosition(row.card_image_position) ? row.card_image_position : undefined;
   return {
     id: text(row.id, "draft"),
     slug: text(row.slug, ""),
@@ -84,6 +95,8 @@ export function readPreviewProduct(data: unknown): Product | null {
     image,
     images: images.filter((item) => item !== image),
     image_positions: imagePositions,
+    image_frames: imageFrames,
+    card_image_position: cardImagePosition,
     visual,
     specs,
     fitment: { headline: text(rawFitment.headline, ""), compatibility: list(rawFitment.compatibility), checkBeforeRide: text(rawFitment.checkBeforeRide, "") },

@@ -1,7 +1,7 @@
 import type { AccountRole } from "@/contexts/AuthContext";
 import { mapHomepage, mapProduct } from "@/contexts/CatalogContext";
 import type { HomepageContent } from "@/data/storefront";
-import { normalizeImageFrames, normalizeImagePositions, type Product } from "@/data/products";
+import { isProductImagePosition, normalizeImageFrames, normalizeImagePositions, type Product } from "@/data/products";
 import type { DeliveryAddress } from "@/lib/deliveryAddress";
 import type { OrderStatus } from "@/lib/orderStatus";
 import type { AccountPaymentMethod } from "@/lib/accountOrders";
@@ -123,6 +123,7 @@ export async function saveAdminProduct(product: Product) {
     // Framing is written against the final photo list, so removing a photo cannot leave a stale crop behind.
     image_positions: normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), product.image_positions),
     image_frames: normalizeImageFrames([image, ...images].filter((item): item is string => Boolean(item)), product.image_frames),
+    card_image_position: isProductImagePosition(product.card_image_position) ? product.card_image_position : null,
     visual: product.visual,
     specs: product.specs,
     fitment: product.fitment,

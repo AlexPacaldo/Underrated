@@ -23,16 +23,14 @@ import PreviewStage from "@/components/admin/PreviewStage";
 import OrderTimeline from "@/components/account/OrderTimeline";
 import "./Admin.css";
 import ProductVisual from "@/components/ProductVisual";
-import type { ProductVisual as ProductVisualType } from "@/data/products";
 import { usePreviewScale } from "@/components/admin/usePreviewScale";
 import { useAuth, type AccountRole } from "@/contexts/AuthContext";
 import { useCatalog } from "@/contexts/CatalogContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
-import { productImagePositions, productImageFrameRatio } from "@/data/products";
+import { productImagePositions, productImageFrameRatio, formatProductImagePosition, productImagePositionCoordinates } from "@/data/products";
 import type {
   Product,
   ProductImageFrame,
-  ProductImagePosition,
 } from "@/data/products";
 import {
   defaultHomepageContent,
@@ -64,9 +62,11 @@ import {
   productPreviewPath,
   productPreviewProductMessage,
   productPreviewReadyMessage,
+  productPreviewViewMessage,
   readPreviewField,
   readPreviewProductHeight,
   type ProductPreviewField,
+  type ProductPreviewView,
 } from "@/lib/productPreview";
 import {
   fetchAdminHomepage,
@@ -592,23 +592,6 @@ function withGalleryFrame(product: Product, frame: ProductImageFrame): Product {
   };
 }
 
-function imagePositionCoordinates(position?: ProductImagePosition): [number, number] {
-  if (!position) return [50, 50];
-  const percentages = position.match(/^(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/);
-  if (percentages) return [Number(percentages[1]), Number(percentages[2])];
-
-  const parts = position.split(" ");
-  const horizontal = parts.find(part => ["left", "right"].includes(part));
-  const vertical = parts.find(part => ["top", "bottom"].includes(part));
-  const x = horizontal === "left" ? 0 : horizontal === "right" ? 100 : 50;
-  const y = vertical === "top" ? 0 : vertical === "bottom" ? 100 : 50;
-  return [x, y];
-}
-
-function formatImagePosition(x: number, y: number): ProductImagePosition {
-  return `${x.toFixed(2)}% ${y.toFixed(2)}%` as ProductImagePosition;
-}
-
 /** Dropping the lead shot promotes the next gallery photo, so an item never shows a photo that is not its lead. */
 function shiftLead(extras: string[]) {
   const [first, ...rest] = extras;
@@ -653,7 +636,8 @@ function ProductEditor({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [draggedImage, setDraggedImage] = useState<string | null>(null);
-  const [device, setDevice] = useState(previewDevices[1]);
+  const [device, setDevice] = useState(previewDevices[0]);
+  const [previewView, setPreviewView] = useState<ProductPreviewView>("page");
   const [previewHeight, setPreviewHeight] = useState(1500);
   const [focusRequest, setFocusRequest] = useState<{
     field: ProductPreviewField;
@@ -680,11 +664,16 @@ function ProductEditor({
   );
 
   const pushPreview = useCallback(() => {
-    frameRef.current?.contentWindow?.postMessage(
+    const previewWindow = frameRef.current?.contentWindow;
+    previewWindow?.postMessage(
       { type: productPreviewProductMessage, product: previewProduct },
       window.location.origin
     );
-  }, [previewProduct]);
+    previewWindow?.postMessage(
+      { type: productPreviewViewMessage, view: previewView },
+      window.location.origin
+    );
+  }, [previewProduct, previewView]);
 
   useEffect(() => {
     pushPreview();
@@ -826,7 +815,20 @@ function ProductEditor({
     width: number;
     height: number;
   } | null>(null);
-  const [cropX, cropY] = imagePositionCoordinates(
+  const [cardImageDimensions, setCardImageDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [cardCropDrag, setCardCropDrag] = useState<{
+    x: number;
+    y: number;
+    posX: number;
+    posY: number;
+    overflowX: number;
+    overflowY: number;
+  } | null>(null);
+  const [cardZoom, setCardZoom] = useState(1);
+  const [cropX, cropY] = productImagePositionCoordinates(
     framingPhoto ? draft.image_positions?.[framingPhoto] : undefined
   );
   const frameRatio = productImageFrameRatio(galleryFrame);
@@ -845,6 +847,24 @@ function ProductEditor({
     setDragStart(null);
   }, [framingPhoto]);
 
+  useEffect(() => {
+    setCardImageDimensions(null);
+    setCardCropDrag(null);
+  }, [gallery[0]]);
+
+  const [cardCropX, cardCropY] = productImagePositionCoordinates(
+    draft.card_image_position
+  );
+  const cardPhotoRatio = cardImageDimensions
+    ? cardImageDimensions.width / cardImageDimensions.height
+    : null;
+  const cardImageWidthScale =
+    cardPhotoRatio === null ? 1 : Math.max(1, cardPhotoRatio / (4 / 5)) * cardZoom;
+  const cardImageHeightScale =
+    cardPhotoRatio === null ? 1 : Math.max(1, (4 / 5) / cardPhotoRatio) * cardZoom;
+  const canAdjustCardCropX = cardImageWidthScale > 1;
+  const canAdjustCardCropY = cardImageHeightScale > 1;
+
   const handleDragStart = (event: React.PointerEvent) => {
     const photo = framingPhoto;
     if (!photo || !imageDimensions) return;
@@ -856,7 +876,7 @@ function ProductEditor({
       Math.max(bounds.width, bounds.height * imageRatio) * zoom - bounds.width;
     const overflowY =
       Math.max(bounds.height, bounds.width / imageRatio) * zoom - bounds.height;
-    const [posX, posY] = imagePositionCoordinates(
+    const [posX, posY] = productImagePositionCoordinates(
       draft.image_positions?.[photo]
     );
     setDragStart({
@@ -886,22 +906,59 @@ function ProductEditor({
       ...cur,
       image_positions: {
         ...(cur.image_positions ?? {}),
-        [photo]: formatImagePosition(nextX, nextY),
+        [photo]: formatProductImagePosition(nextX, nextY),
       },
     }));
   };
 
   const handleDragEnd = () => setDragStart(null);
+  const handleCardCropStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    const photo = gallery[0];
+    if (!photo || !cardImageDimensions) return;
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const imageRatio = cardImageDimensions.width / cardImageDimensions.height;
+    const [posX, posY] = productImagePositionCoordinates(draft.card_image_position);
+    setCardCropDrag({
+      x: event.clientX,
+      y: event.clientY,
+      posX,
+      posY,
+      overflowX: Math.max(bounds.width, bounds.height * imageRatio) * cardZoom - bounds.width,
+      overflowY: Math.max(bounds.height, bounds.width / imageRatio) * cardZoom - bounds.height,
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const handleCardCropMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!cardCropDrag) return;
+    const dx = event.clientX - cardCropDrag.x;
+    const dy = event.clientY - cardCropDrag.y;
+    const nextX = Math.max(0, Math.min(100, cardCropDrag.posX - (cardCropDrag.overflowX > 0 ? dx * 100 / cardCropDrag.overflowX : 0)));
+    const nextY = Math.max(0, Math.min(100, cardCropDrag.posY - (cardCropDrag.overflowY > 0 ? dy * 100 / cardCropDrag.overflowY : 0)));
+    setDraft(current => ({ ...current, card_image_position: formatProductImagePosition(nextX, nextY) }));
+  };
+  const handleCardCropEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    setCardCropDrag(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+  const updateCardCropPosition = (axis: "x" | "y", value: number) => {
+    const [x, y] = productImagePositionCoordinates(draft.card_image_position);
+    setDraft(current => ({
+      ...current,
+      card_image_position: formatProductImagePosition(axis === "x" ? value : x, axis === "y" ? value : y),
+    }));
+  };
+  const resetCardCropPosition = () => setDraft(current => ({ ...current, card_image_position: undefined }));
   const updateCropPosition = (axis: "x" | "y", value: number) => {
     if (!framingPhoto) return;
-    const [x, y] = imagePositionCoordinates(
+    const [x, y] = productImagePositionCoordinates(
       draft.image_positions?.[framingPhoto]
     );
     setDraft(current => ({
       ...current,
       image_positions: {
         ...(current.image_positions ?? {}),
-        [framingPhoto]: formatImagePosition(
+        [framingPhoto]: formatProductImagePosition(
           axis === "x" ? value : x,
           axis === "y" ? value : y
         ),
@@ -977,9 +1034,27 @@ function ProductEditor({
       </div>
       <div className="grid gap-6 p-5 2xl:grid-cols-[minmax(0,1.1fr)_minmax(400px,.9fr)]">
         <div className="min-w-0">
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div role="group" aria-label="Preview content" className="flex items-center gap-1 rounded-md border border-white/10 bg-[#0d0e10] p-1">
+              {([
+                { id: "page", label: "Item page" },
+                { id: "card", label: "Shop card" },
+              ] as const).map(item => (
+                <button
+                  type="button"
+                  key={item.id}
+                  onClick={() => setPreviewView(item.id)}
+                  aria-pressed={previewView === item.id}
+                  className={`rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.1em] transition ${previewView === item.id ? "bg-white text-black" : "text-white/50 hover:text-white"}`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
             {previewDevices.map(item => (
               <button
+                type="button"
                 key={item.id}
                 onClick={() => setDevice(item)}
                 className={`border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[.12em] transition ${device.id === item.id ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/50 hover:border-white/50 hover:text-white"}`}
@@ -987,6 +1062,7 @@ function ProductEditor({
                 {item.label}
               </button>
             ))}
+            </div>
           </div>
           <PreviewStage
             src={productPreviewPath}
@@ -1425,62 +1501,128 @@ function ProductEditor({
             </div>
           </section>
 
-          <details className="border border-white/10 bg-[#0d0e10] p-4">
-            <summary className="cursor-pointer text-sm font-bold text-white">
-              More settings
-              <span className="ml-2 text-xs font-normal text-white/40">
-                Fallback artwork and listing status
-              </span>
-            </summary>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className={labelClass}>
-                Fallback artwork
-                <select
-                  value={draft.visual}
-                  onChange={event =>
-                    update("visual", event.target.value as ProductVisualType)
-                  }
-                  className={inputClass}
-                >
-                  {(
-                    [
-                      ["hoods", "Brake hoods"],
-                      ["valve", "Valve stem"],
-                      ["saddle", "Saddle"],
-                      ["tape", "Handlebar tape"],
-                      ["stem", "Stem"],
-                      ["stand", "Display stand"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <option key={value} value={value} className="bg-[#111214]">
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs font-normal text-white/40">
-                  Used only when no product photo is set.
-                </span>
-              </label>
-              <div className="flex flex-col justify-center gap-3">
-                <label className="flex items-center gap-2 text-xs text-white/65">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(draft.featured)}
-                    onChange={event => update("featured", event.target.checked)}
-                  />
-                  Feature in the drop
-                </label>
-                <label className="flex items-center gap-2 text-xs text-white/65">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(draft.archived)}
-                    onChange={event => update("archived", event.target.checked)}
-                  />
-                  Archive this item
-                </label>
+          {galleryFrame === "wide" ? (
+            <section className="border border-white/10 bg-[#0d0e10] p-4">
+              <div className="mb-4">
+                <h3 className="text-sm font-bold text-white">Shop card crop</h3>
+                <p className="mt-1 text-xs text-white/45">
+                  Adjust the lead photo for product cards. This crop is separate from the item gallery.
+                </p>
               </div>
+              <div
+                className={`relative mx-auto w-full max-w-[320px] overflow-hidden border border-white/15 bg-[#161719] ${gallery[0] && cardCropDrag ? "cursor-grabbing" : "cursor-grab"}`}
+                style={{ aspectRatio: "4 / 5", touchAction: "none" }}
+                onPointerDown={handleCardCropStart}
+                onPointerMove={handleCardCropMove}
+                onPointerUp={handleCardCropEnd}
+                onPointerCancel={handleCardCropEnd}
+              >
+                {gallery[0] ? (
+                  <img
+                    src={gallery[0]}
+                    alt={`Shop card crop preview for ${draft.name || "product"}`}
+                    draggable={false}
+                    onLoad={event => {
+                      const image = event.currentTarget;
+                      if (image.getAttribute("src") === gallery[0] && image.naturalWidth > 0 && image.naturalHeight > 0) {
+                        setCardImageDimensions({ width: image.naturalWidth, height: image.naturalHeight });
+                      }
+                    }}
+                    className="pointer-events-none absolute max-h-none max-w-none select-none"
+                    style={{
+                      width: `${cardImageWidthScale * 100}%`,
+                      height: `${cardImageHeightScale * 100}%`,
+                      left: `${(100 - cardImageWidthScale * 100) * (cardCropX / 100)}%`,
+                      top: `${(100 - cardImageHeightScale * 100) * (cardCropY / 100)}%`,
+                      objectFit: "fill",
+                    }}
+                  />
+                ) : (
+                  <ProductVisual product={draft} />
+                )}
+                <span className="pointer-events-none absolute left-2 top-2 border border-white/20 bg-black/60 px-2 py-1 text-[9px] font-bold uppercase tracking-[.12em] text-white/70">
+                  Shop listing · 4:5
+                </span>
+              </div>
+              {gallery[0] ? (
+                <div className="mt-3 grid gap-4 border border-white/10 bg-black/20 p-4 sm:grid-cols-2">
+                  <label className="grid grid-cols-[auto_minmax(0,1fr)_3rem] items-center gap-3 text-[10px] font-bold uppercase tracking-[.12em] text-white/55 sm:col-span-2">
+                    <span>Zoom</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="3"
+                      step="0.01"
+                      value={cardZoom}
+                      onChange={event => setCardZoom(Number(event.target.value))}
+                      aria-label="Shop card photo zoom"
+                      className="h-1.5 w-full cursor-pointer accent-[#ff5a36]"
+                    />
+                    <span className="text-right tabular-nums text-white/75">{Math.round((cardZoom - 1) * 100)}%</span>
+                  </label>
+                  <label className="grid grid-cols-[auto_minmax(0,1fr)_2.5rem] items-center gap-3 text-[10px] font-bold uppercase tracking-[.12em] text-white/55">
+                    <span>Horizontal</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={cardCropX}
+                      onChange={event => updateCardCropPosition("x", Number(event.target.value))}
+                      disabled={!canAdjustCardCropX}
+                      aria-label="Shop card horizontal photo position"
+                      className="h-1.5 w-full cursor-pointer accent-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-30"
+                    />
+                    <span className="text-right tabular-nums text-white/75">{Math.round(cardCropX)}%</span>
+                  </label>
+                  <label className="grid grid-cols-[auto_minmax(0,1fr)_2.5rem] items-center gap-3 text-[10px] font-bold uppercase tracking-[.12em] text-white/55">
+                    <span>Vertical</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={cardCropY}
+                      onChange={event => updateCardCropPosition("y", Number(event.target.value))}
+                      disabled={!canAdjustCardCropY}
+                      aria-label="Shop card vertical photo position"
+                      className="h-1.5 w-full cursor-pointer accent-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-30"
+                    />
+                    <span className="text-right tabular-nums text-white/75">{Math.round(cardCropY)}%</span>
+                  </label>
+                  <div className="flex items-center justify-between gap-3 sm:col-span-2">
+                    <p className="text-xs text-white/40">Drag the image or fine-tune its crop with the sliders.</p>
+                    <button
+                      type="button"
+                      onClick={resetCardCropPosition}
+                      className="shrink-0 border border-white/15 px-3 py-2 text-xs font-semibold text-white/65 transition hover:border-white/35 hover:text-white"
+                    >
+                      Reset crop
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 border border-white/10 bg-black/20 p-3 text-xs text-white/45">
+                  Upload a lead photo to adjust the shop card crop.
+                </p>
+              )}
+            </section>
+          ) : null}
+
+          <section className="border border-white/10 bg-[#0d0e10] p-4">
+            <h3 className="text-sm font-bold text-white">Homepage placement</h3>
+            <p className="mt-1 text-xs text-white/45">Choose whether this item is featured on the homepage.</p>
+            <div className="mt-4">
+              <label className="flex items-center gap-2 text-xs text-white/65">
+                <input
+                  type="checkbox"
+                  checked={Boolean(draft.featured)}
+                  onChange={event => update("featured", event.target.checked)}
+                />
+                Feature in homepage
+              </label>
             </div>
-          </details>
+          </section>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3 border-t border-white/10 bg-[#0d0e10] px-5 py-4">
@@ -1794,7 +1936,6 @@ const homepageSections: HomepageSection[] = [
 
 const previewDevices = [
   { id: "desktop", label: "Desktop", width: 1440 },
-  { id: "laptop", label: "Laptop", width: 1280 },
   { id: "tablet", label: "Tablet", width: 834 },
   { id: "phone", label: "Phone", width: 390 },
 ];

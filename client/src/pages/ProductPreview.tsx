@@ -4,7 +4,7 @@
 import ProductCard from "@/components/ProductCard";
 import ProductDetailView from "@/components/ProductDetailView";
 import type { Product } from "@/data/products";
-import { postToParent, productPreviewMetricsMessage, productPreviewReadyMessage, productPreviewSelectMessage, readPreviewProduct, type ProductPreviewField } from "@/lib/productPreview";
+import { postToParent, productPreviewMetricsMessage, productPreviewReadyMessage, productPreviewSelectMessage, productPreviewViewMessage, readPreviewProduct, type ProductPreviewField, type ProductPreviewView } from "@/lib/productPreview";
 import { useCallback, useEffect, useState } from "react";
 
 const emptyDraft: Product = {
@@ -28,6 +28,7 @@ const emptyDraft: Product = {
 export default function ProductPreview() {
   const [product, setProduct] = useState<Product>(emptyDraft);
   const [field, setField] = useState<ProductPreviewField | null>(null);
+  const [view, setView] = useState<ProductPreviewView>("page");
 
   const select = useCallback((next: ProductPreviewField) => {
     setField(next);
@@ -37,11 +38,20 @@ export default function ProductPreview() {
   useEffect(() => {
     document.documentElement.style.overflow = "hidden";
 
-    const report = () => postToParent({ type: productPreviewMetricsMessage, height: document.documentElement.scrollHeight });
+    const report = () => postToParent({ type: productPreviewMetricsMessage, height: document.body.scrollHeight });
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const next = readPreviewProduct(event.data);
-      if (next) setProduct(next);
+      if (next) {
+        setProduct(next);
+        return;
+      }
+      const payload = event.data && typeof event.data === "object"
+        ? event.data as { type?: string; view?: unknown }
+        : null;
+      if (payload?.type === productPreviewViewMessage && (payload.view === "page" || payload.view === "card")) {
+        setView(payload.view);
+      }
     };
     // Outlined fields handle their own clicks, so only everything else is swallowed:
     // that keeps the storefront chrome, the cart button and the back link inert.
@@ -71,15 +81,20 @@ export default function ProductPreview() {
     };
   }, []);
 
-  return <div className="pt-[68px]">
-    <section className="px-4 py-10 sm:px-6 lg:px-9">
-      <div className="mx-auto max-w-[1440px]">
-        <p className="text-[10px] font-black uppercase tracking-[.16em] text-white/35">Shop card / how it sits in the index</p>
-        <div className="mt-4 grid gap-x-4 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="max-w-[300px]"><ProductCard product={product} preview={{ active: field, onSelect: select }} /></div>
+  if (view === "card") {
+    return (
+      <main className="px-5 pb-12 pt-8 sm:px-8">
+        <div className="mx-auto max-w-6xl">
+          <p className="text-[10px] font-black uppercase tracking-[.16em] text-white/40">Shop / Item card</p>
+          <div className="mt-5 rounded-lg border border-white/10 bg-[#101113] px-5 py-8 sm:px-10 sm:py-12">
+            <div className="mx-auto w-full max-w-[320px]">
+              <ProductCard product={product} preview={{ active: field, onSelect: select }} />
+            </div>
+          </div>
         </div>
-      </div>
-    </section>
-    <ProductDetailView product={product} preview={{ active: field, onSelect: select }} topOffset={false} backHref="/shop" backLabel="Shop" />
-  </div>;
+      </main>
+    );
+  }
+
+  return <ProductDetailView product={product} preview={{ active: field, onSelect: select }} topOffset={false} minHeight={false} backHref="/shop" backLabel="Shop" />;
 }
