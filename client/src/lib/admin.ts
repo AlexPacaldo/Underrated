@@ -1,7 +1,7 @@
 import type { AccountRole } from "@/contexts/AuthContext";
-import { mapHomepage, mapProduct } from "@/contexts/CatalogContext";
+import { mapCategory, mapHomepage, mapProduct } from "@/contexts/CatalogContext";
 import type { HomepageContent } from "@/data/storefront";
-import { isProductImagePosition, normalizeImageFrames, normalizeImagePositions, type Product } from "@/data/products";
+import { isProductImagePosition, normalizeImageFrames, normalizeImagePositions, type CatalogCategory, type Product } from "@/data/products";
 import type { DeliveryAddress } from "@/lib/deliveryAddress";
 import type { OrderStatus } from "@/lib/orderStatus";
 import type { AccountPaymentMethod } from "@/lib/accountOrders";
@@ -97,6 +97,39 @@ export async function updateAdminOrderStatus(orderId: string, status: AdminOrder
   return data;
 }
 
+export async function fetchAdminCategories() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id,name,sort_order")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(mapCategory);
+}
+
+export async function saveAdminCategory(category: CatalogCategory) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase.rpc("admin_save_category", {
+    p_id: category.id,
+    p_name: category.name.trim(),
+    p_sort_order: category.sortOrder,
+  });
+  if (error) throw error;
+}
+
+export async function deleteAdminCategory(categoryId: string) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase.rpc("admin_delete_category", { p_id: categoryId });
+  if (error) throw error;
+}
+
+export async function moveAdminCategory(categoryId: string, direction: -1 | 1) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase.rpc("admin_move_category", { p_id: categoryId, p_direction: direction });
+  if (error) throw error;
+}
+
 export async function fetchAdminProducts() {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.from("products").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true });
@@ -137,6 +170,12 @@ export async function saveAdminProduct(product: Product) {
 export async function setAdminProductArchived(productId: string, archived: boolean) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { error } = await supabase.from("products").update({ archived }).eq("id", productId);
+  if (error) throw error;
+}
+
+export async function deleteAdminProduct(productId: string) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase.from("products").delete().eq("id", productId);
   if (error) throw error;
 }
 

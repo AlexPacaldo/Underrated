@@ -134,11 +134,11 @@ export default function HomepageSections({ content, products, categories, previe
       </SectionShell>
 
       <SectionShell id={null} label="Build index" editable={false} preview={preview}>
-        <section className="bg-[#0c0d0e] px-4 py-16 sm:px-6 lg:px-9 lg:py-24"><div className="mx-auto max-w-[1440px]"><div className="mb-9"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#ff5a36]">Build index</p><h2 className="mt-3 font-display text-6xl uppercase leading-[.74] tracking-[-.05em] text-white sm:text-7xl">Every point of<br />contact.</h2></div><div className="grid border-l border-t border-white/15 sm:grid-cols-2 lg:grid-cols-5">
-              {categories.map((category) => (
+        <section className="bg-[#0c0d0e] px-4 py-16 sm:px-6 lg:px-9 lg:py-24"><div className="mx-auto max-w-[1440px]"><div className="mb-9"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#ff5a36]">Build index</p><h2 className="mt-3 font-display text-6xl uppercase leading-[.74] tracking-[-.05em] text-white sm:text-7xl">Every point of<br />contact.</h2></div><div className="grid border-l border-t border-white/15 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
+              {categories.map((category, index) => (
                 <Link key={category.name} href={`/shop?category=${category.name}`} className="group relative flex min-h-40 flex-col border-b border-r border-white/15 p-5 transition hover:bg-[#151719] sm:min-h-44">
                   <div className="flex items-start justify-between">
-                    <span className="text-[10px] font-bold tracking-[.16em] text-white/35">{category.index}</span>
+                    <span className="text-[10px] font-bold tracking-[.16em] text-white/35">{String(index + 1).padStart(2, "0")}</span>
                     <span className="grid size-7 place-items-center border border-white/20 text-white/55 transition group-hover:border-[#ff5a36] group-hover:bg-[#ff5a36] group-hover:text-black"><MoveUpRight size={14} /></span>
                   </div>
                   <p className="mt-auto pt-10 font-display text-3xl uppercase leading-none text-white group-hover:text-[#ff5a36] xl:text-4xl">{category.name}</p>

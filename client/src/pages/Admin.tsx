@@ -4,15 +4,20 @@ import {
   Archive,
   ArrowLeft,
   Check,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   GripVertical,
   ImagePlus,
   LayoutDashboard,
   LogOut,
   Package,
-  Search,
+  Plus,
   Save,
+  Search,
   ShieldCheck,
+  Tags,
+  Trash2,
   Truck,
   Undo2,
   Upload,
@@ -20,6 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import PreviewStage from "@/components/admin/PreviewStage";
+import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import OrderTimeline from "@/components/account/OrderTimeline";
 import "./Admin.css";
 import ProductVisual from "@/components/ProductVisual";
@@ -29,6 +35,7 @@ import { useCatalog } from "@/contexts/CatalogContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { productImagePositions, productImageFrameRatio, formatProductImagePosition, productImagePositionCoordinates } from "@/data/products";
 import type {
+  CatalogCategory,
   Product,
   ProductImageFrame,
 } from "@/data/products";
@@ -69,10 +76,15 @@ import {
   type ProductPreviewView,
 } from "@/lib/productPreview";
 import {
+  deleteAdminCategory,
+  deleteAdminProduct,
+  fetchAdminCategories,
   fetchAdminHomepage,
   fetchAdminOrders,
   fetchAdminProducts,
   fetchAdminProfiles,
+  moveAdminCategory,
+  saveAdminCategory,
   saveAdminHomepage,
   saveAdminProduct,
   setAdminProductArchived,
@@ -86,12 +98,19 @@ import {
 } from "@/lib/admin";
 import { bookOrderShipment } from "@/lib/logistics";
 
-type Section = "overview" | "orders" | "products" | "homepage" | "roles";
+type Section =
+  | "overview"
+  | "orders"
+  | "products"
+  | "categories"
+  | "homepage"
+  | "roles";
 
 const navigation = [
   { id: "overview" as const, label: "Overview", icon: LayoutDashboard },
   { id: "orders" as const, label: "Orders", icon: Package },
   { id: "products" as const, label: "Shop items", icon: Archive },
+  { id: "categories" as const, label: "Categories", icon: Tags },
   { id: "homepage" as const, label: "Homepage", icon: ImagePlus },
   { id: "roles" as const, label: "Team access", icon: Users },
 ];
@@ -546,12 +565,12 @@ function OrderCard({
   );
 }
 
-function newProduct(): Product {
+function newProduct(categories: CatalogCategory[]): Product {
   return {
     id: `part-${Date.now()}`,
     slug: "",
     name: "",
-    category: "Accessories",
+    category: categories[0]?.name ?? "",
     price: 0,
     descriptor: "",
     description: "",
@@ -617,10 +636,12 @@ function dropImage(product: Product, value: string) {
 
 function ProductEditor({
   product,
+  categories,
   onSaved,
   onCancel,
 }: {
   product: Product;
+  categories: CatalogCategory[];
   onSaved: () => Promise<void>;
   onCancel: () => void;
 }) {
@@ -734,7 +755,8 @@ function ProductEditor({
     }
     if (!draft.category.trim()) {
       toast.error("Category required.", {
-        description: "Choose a category so the item appears in the shop index.",
+        description:
+          "Add a category in the Categories section, then choose it here.",
       });
       return;
     }
@@ -1101,12 +1123,29 @@ function ProductEditor({
               </label>
               <label className={labelClass}>
                 Category
-                <input
+                <select
                   data-editor-field="category"
                   value={draft.category}
                   onChange={event => update("category", event.target.value)}
                   className={inputClass}
-                />
+                >
+                  {draft.category ? null : (
+                    <option value="">Select a category</option>
+                  )}
+                  {draft.category &&
+                  !categories.some(
+                    category => category.name === draft.category
+                  ) ? (
+                    <option value={draft.category}>
+                      {draft.category} (not in catalog)
+                    </option>
+                  ) : null}
+                  {categories.map(category => (
+                    <option key={category.id} value={category.name}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className={labelClass}>
                 Price (PHP)
@@ -1657,14 +1696,18 @@ function ProductEditor({
 }
 function ProductManager({
   products,
+  categories,
   reload,
   notify,
 }: {
   products: Product[];
+  categories: CatalogCategory[];
   reload: () => Promise<void>;
   notify: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState<Product | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [query, setQuery] = useState("");
   const [visibility, setVisibility] = useState<
     "all" | "published" | "archived"
@@ -1690,6 +1733,23 @@ function ProductManager({
       });
     }
   };
+  const removeProduct = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      await deleteAdminProduct(pendingDelete.id);
+      toast.success("Item deleted.");
+      setPendingDelete(null);
+      await reload();
+      await notify();
+    } catch (error) {
+      toast.error("Could not delete item.", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -1705,7 +1765,7 @@ function ProductManager({
           </p>
         </div>
         <button
-          onClick={() => setEditing(newProduct())}
+          onClick={() => setEditing(newProduct(categories))}
           className="bg-[#ff5a36] px-4 py-3 text-sm font-bold text-black"
         >
           + Add shop item
@@ -1714,6 +1774,7 @@ function ProductManager({
       {editing ? (
         <ProductEditor
           product={editing}
+          categories={categories}
           onSaved={async () => {
             setEditing(null);
             await reload();
@@ -1804,6 +1865,12 @@ function ProductManager({
               >
                 {product.archived ? "Restore item" : "Archive item"}
               </button>
+              <button
+                onClick={() => setPendingDelete(product)}
+                className="border border-white/20 px-4 py-2 text-sm font-semibold text-white/45 hover:border-red-400 hover:text-red-400"
+              >
+                Delete item
+              </button>
             </div>
           </div>
         ))}
@@ -1815,6 +1882,336 @@ function ProductManager({
           </p>
         ) : null}
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete item?"
+        description={
+          pendingDelete
+            ? `Permanently delete "${pendingDelete.name.trim() || "this item"}"? This cannot be undone. Past orders keep their item name and price, but the catalog photo and link are removed.`
+            : ""
+        }
+        confirmLabel="Delete item"
+        busyLabel="Deleting..."
+        busy={deleting}
+        onConfirm={() => void removeProduct()}
+        onClose={() => setPendingDelete(null)}
+      />
+    </div>
+  );
+}
+
+function categoryIdFromName(name: string) {
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "category";
+  return `${base}-${Date.now().toString(36)}`;
+}
+
+function CategoryRow({
+  category,
+  position,
+  total,
+  usage,
+  reload,
+  notify,
+}: {
+  category: CatalogCategory;
+  position: number;
+  total: number;
+  usage: number;
+  reload: () => Promise<void>;
+  notify: () => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(category);
+  const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  useEffect(() => setDraft(category), [category]);
+
+  const update = (name: string) =>
+    setDraft(current => ({ ...current, name }));
+
+  const save = async () => {
+    if (!draft.name.trim()) {
+      toast.error("Category name required.", {
+        description: "Give the category a name before saving.",
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      await saveAdminCategory({ ...draft, name: draft.name.trim() });
+      toast.success("Category updated.");
+      await reload();
+      await notify();
+    } catch (error) {
+      toast.error("Could not update category.", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const move = async (direction: -1 | 1) => {
+    setBusy(true);
+    try {
+      await moveAdminCategory(category.id, direction);
+      await reload();
+      await notify();
+    } catch (error) {
+      toast.error("Could not reorder categories.", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (usage > 0) {
+      toast.error("Category still in use.", {
+        description: `Move ${usage} shop item${usage === 1 ? "" : "s"} to another category first.`,
+      });
+      return;
+    }
+    setConfirmingDelete(true);
+  };
+
+  const confirmRemove = async () => {
+    setBusy(true);
+    try {
+      await deleteAdminCategory(category.id);
+      toast.success("Category deleted.");
+      setConfirmingDelete(false);
+      await reload();
+      await notify();
+    } catch (error) {
+      toast.error("Could not delete category.", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-white/15 bg-[#111214] p-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end">
+        <div className="grid flex-1 gap-4">
+          <label className={labelClass}>
+            Name
+            <input
+              value={draft.name}
+              onChange={event => update(event.target.value)}
+              className={inputClass}
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void move(-1)}
+            disabled={busy || position === 0}
+            className="grid size-10 place-items-center border border-white/20 text-white/65 transition hover:border-[#ff5a36] hover:text-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label={`Move ${category.name} up`}
+            title="Move up"
+          >
+            <ChevronUp size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void move(1)}
+            disabled={busy || position === total - 1}
+            className="grid size-10 place-items-center border border-white/20 text-white/65 transition hover:border-[#ff5a36] hover:text-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label={`Move ${category.name} down`}
+            title="Move down"
+          >
+            <ChevronDown size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy}
+            className="inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-4 text-xs font-bold text-black disabled:opacity-50"
+          >
+            <Save size={14} />
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => void remove()}
+            disabled={busy}
+            className="grid size-10 place-items-center border border-white/20 text-white/45 transition hover:border-red-400 hover:text-red-400 disabled:opacity-30"
+            aria-label={`Delete ${category.name}`}
+            title={
+              usage > 0
+                ? "Move shop items out of this category before deleting it"
+                : "Delete category"
+            }
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[.12em] text-white/35">
+        <span>
+          Position {position + 1} of {total} · {usage} shop item
+          {usage === 1 ? "" : "s"}
+        </span>
+        {usage > 0 ? <span>Move items out before deleting</span> : null}
+      </div>
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="Delete category?"
+        description={`Permanently delete "${category.name}"? This cannot be undone.`}
+        confirmLabel="Delete category"
+        busyLabel="Deleting..."
+        busy={busy}
+        onConfirm={() => void confirmRemove()}
+        onClose={() => setConfirmingDelete(false)}
+      />
+    </div>
+  );
+}
+
+function CategoryManager({
+  categories,
+  products,
+  reload,
+  notify,
+}: {
+  categories: CatalogCategory[];
+  products: Product[];
+  reload: () => Promise<void>;
+  notify: () => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const usage = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const product of products) {
+      counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
+    }
+    return counts;
+  }, [products]);
+
+  const nextSortOrder =
+    categories.reduce(
+      (highest, category) => Math.max(highest, category.sortOrder),
+      0
+    ) + 10;
+
+  const addCategory = async () => {
+    const cleanName = name.trim();
+    if (!cleanName) {
+      toast.error("Category name required.", {
+        description: "Enter a name such as Cockpit or Bar Tape.",
+      });
+      return;
+    }
+    if (
+      categories.some(
+        category => category.name.toLowerCase() === cleanName.toLowerCase()
+      )
+    ) {
+      toast.error("Category already exists.", {
+        description: "Choose a different name or edit the existing category.",
+      });
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveAdminCategory({
+        id: categoryIdFromName(cleanName),
+        name: cleanName,
+        sortOrder: nextSortOrder,
+      });
+      toast.success("Category added.");
+      setName("");
+      await reload();
+      await notify();
+    } catch (error) {
+      toast.error("Could not add category.", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">
+          Catalog structure
+        </p>
+        <h1 className="mt-1 font-display text-5xl uppercase text-white">
+          Categories
+        </h1>
+        <p className="mt-2 text-sm text-white/50">
+          Add categories, rename or reorder them, and control the options
+          available when adding or editing a shop item.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-white/15 bg-[#111214] p-4">
+        <div className="mb-4">
+          <h2 className="text-sm font-bold text-white">Add a category</h2>
+          <p className="mt-1 text-xs text-white/45">
+            New categories appear in the storefront navigation and the shop
+            item editor.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <label className={labelClass}>
+            Name
+            <input
+              value={name}
+              onChange={event => setName(event.target.value)}
+              className={inputClass}
+              placeholder="Bar Tape"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void addCategory()}
+            disabled={saving}
+            className="inline-flex h-11 items-center justify-center gap-2 bg-[#ff5a36] px-5 text-xs font-bold text-black disabled:opacity-50"
+          >
+            <Plus size={15} />
+            {saving ? "Adding..." : "Add category"}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-3">
+        {categories.map((category, position) => (
+          <CategoryRow
+            key={category.id}
+            category={category}
+            position={position}
+            total={categories.length}
+            usage={usage.get(category.name) ?? 0}
+            reload={reload}
+            notify={notify}
+          />
+        ))}
+        {categories.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-white/20 bg-white p-8 text-center text-sm text-white/50">
+            No categories yet. Add your first category so shop items can be
+            grouped.
+          </p>
+        ) : null}
+      </div>
+
+      <p className="text-xs leading-5 text-white/35">
+        Renaming a category moves every shop item with it. A category that still
+        has shop items cannot be deleted; reassign those items first.
+      </p>
     </div>
   );
 }
@@ -2392,6 +2789,7 @@ export default function Admin() {
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [homepage, setHomepage] = useState<HomepageContent>(
     defaultHomepageContent
   );
@@ -2407,9 +2805,15 @@ export default function Admin() {
       fetchAdminProducts(),
       fetchAdminHomepage(),
       fetchAdminProfiles(),
+      fetchAdminCategories(),
     ]);
-    const [ordersResult, productsResult, homepageResult, profilesResult] =
-      results;
+    const [
+      ordersResult,
+      productsResult,
+      homepageResult,
+      profilesResult,
+      categoriesResult,
+    ] = results;
     if (ordersResult.status === "fulfilled") setOrders(ordersResult.value);
     if (productsResult.status === "fulfilled")
       setProducts(productsResult.value);
@@ -2417,6 +2821,8 @@ export default function Admin() {
       setHomepage(homepageResult.value);
     if (profilesResult.status === "fulfilled")
       setProfiles(profilesResult.value);
+    if (categoriesResult.status === "fulfilled")
+      setCategories(categoriesResult.value);
     const failed = results.find(result => result.status === "rejected");
     setDataError(
       failed?.status === "rejected"
@@ -2518,7 +2924,8 @@ export default function Admin() {
               Store administration
             </h1>
             <p className="mt-1 text-sm text-white/55">
-              Manage orders, shop items, homepage content, and staff access.
+              Manage orders, shop items, categories, homepage content, and
+              staff access.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -2639,6 +3046,12 @@ export default function Admin() {
                     Add or edit a shop item
                   </button>
                   <button
+                    onClick={() => setSection("categories")}
+                    className="border border-white/20 px-4 py-3 text-sm font-semibold text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]"
+                  >
+                    Manage categories
+                  </button>
+                  <button
                     onClick={() => setSection("homepage")}
                     className="border border-white/20 px-4 py-3 text-sm font-semibold text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]"
                   >
@@ -2696,6 +3109,15 @@ export default function Admin() {
           ) : null}
           {section === "products" ? (
             <ProductManager
+              products={products}
+              categories={categories}
+              reload={load}
+              notify={refreshCatalog}
+            />
+          ) : null}
+          {section === "categories" ? (
+            <CategoryManager
+              categories={categories}
               products={products}
               reload={load}
               notify={refreshCatalog}

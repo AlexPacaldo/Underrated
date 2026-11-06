@@ -67,6 +67,16 @@ export function mapProduct(value: unknown): Product {
   };
 }
 
+export function mapCategory(value: unknown): CatalogCategory {
+  const row = asRecord(value);
+  const name = String(row.name ?? "Untitled category");
+  return {
+    id: String(row.id ?? name),
+    name,
+    sortOrder: Number(row.sort_order ?? 0),
+  };
+}
+
 export function mapHomepage(value: unknown): HomepageContent {
   const row = asRecord(value);
   const text = (key: keyof HomepageContent, fallback: string) => typeof row[key] === "string" ? row[key] as string : fallback;
@@ -103,16 +113,23 @@ export function mapHomepage(value: unknown): HomepageContent {
   };
 }
 
-function buildCategories(products: Product[]) {
-  const next = new Map(fallbackCategories.map((category) => [category.name, category]));
+function buildCategories(stored: CatalogCategory[], products: Product[]) {
+  const next = new Map(stored.map((category) => [category.name, category]));
   for (const product of products) {
-    if (!next.has(product.category)) next.set(product.category, { name: product.category, index: String(next.size + 1).padStart(2, "0"), note: "Current release" });
+    const name = product.category.trim();
+    if (!name || next.has(name)) continue;
+    next.set(name, {
+      id: `product-${name}`,
+      name,
+      sortOrder: Math.max(0, ...Array.from(next.values(), (category) => category.sortOrder)) + 10,
+    });
   }
-  return Array.from(next.values());
+  return Array.from(next.values()).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 }
 
 export function CatalogProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>(fallbackProducts);
+  const [categories, setCategories] = useState<CatalogCategory[]>(() => buildCategories(fallbackCategories, fallbackProducts));
   const [homepage, setHomepage] = useState<HomepageContent>(defaultHomepageContent);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +138,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!supabase) {
       setProducts(fallbackProducts);
+      setCategories(buildCategories(fallbackCategories, fallbackProducts));
       setHomepage(defaultHomepageContent);
       setLoading(false);
       return;
@@ -129,17 +147,25 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     const currentRequest = requestId.current + 1;
     requestId.current = currentRequest;
     setLoading(true);
-    const [productResult, homepageResult] = await Promise.all([
+    const [productResult, homepageResult, categoryResult] = await Promise.all([
       supabase.from("products").select("id,slug,name,category,price_php_cents,badge,descriptor,description,finishes,image_path,images,image_positions,image_frames,card_image_position,visual,specs,fitment,featured,archived,sort_order").eq("archived", false).order("sort_order", { ascending: true }),
       supabase.from("homepage_content").select("*").eq("id", "primary").maybeSingle(),
+      supabase.from("categories").select("id,name,sort_order").order("sort_order", { ascending: true }),
     ]);
 
     if (requestId.current !== currentRequest) return;
 
+    // A missing category table should not take the storefront down; fall back to
+    // the built-in list until the migration is applied.
+    const storedCategories = categoryResult.error ? fallbackCategories : (categoryResult.data ?? []).map(mapCategory);
+
     if (productResult.error) {
       setError(productResult.error.message);
+      setCategories(buildCategories(storedCategories, []));
     } else {
-      setProducts((productResult.data ?? []).map(mapProduct));
+      const nextProducts = (productResult.data ?? []).map(mapProduct);
+      setProducts(nextProducts);
+      setCategories(buildCategories(storedCategories, nextProducts));
       setError(null);
     }
 
@@ -158,7 +184,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const value = useMemo<CatalogContextValue>(() => ({ products, categories: buildCategories(products), homepage, loading, error, refresh }), [error, homepage, loading, products, refresh]);
+  const value = useMemo<CatalogContextValue>(() => ({ products, categories, homepage, loading, error, refresh }), [categories, error, homepage, loading, products, refresh]);
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 }
 

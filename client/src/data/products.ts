@@ -110,9 +110,9 @@ export type Product = {
 };
 
 export type CatalogCategory = {
+  id: string;
   name: string;
-  index: string;
-  note: string;
+  sortOrder: number;
 };
 
 export const products: Product[] = [
@@ -260,10 +260,11 @@ export const products: Product[] = [
 ];
 
 export const categories: CatalogCategory[] = [
-  { name: "Cockpit", index: "01", note: "Tape · Stems · Control" },
-  { name: "Hoods", index: "02", note: "Grip · Shape · Signal" },
-  { name: "Valve Caps", index: "03", note: "Small parts · Big impact" },
-  { name: "Saddles", index: "04", note: "Contact · Profile · Pace" },
+  { id: "cockpit", name: "Cockpit", sortOrder: 10 },
+  { id: "hoods", name: "Hoods", sortOrder: 20 },
+  { id: "valve-caps", name: "Valve Caps", sortOrder: 30 },
+  { id: "saddles", name: "Saddles", sortOrder: 40 },
+  { id: "accessories", name: "Accessories", sortOrder: 50 },
 ];
 
 export function money(value: number, currency = "PHP", rate = 1, locale = "en-PH") {

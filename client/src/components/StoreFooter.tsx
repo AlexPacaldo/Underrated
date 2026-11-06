@@ -1,7 +1,6 @@
 /**
  * Design direction: Technical Drop Editorial — the footer finishes as a printed colophon, dense with structure and no soft marketing chrome.
  */
-import { ArrowUpRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { useCatalog } from "@/contexts/CatalogContext";
@@ -53,9 +52,8 @@ export default function StoreFooter() {
 
         <Column label="Follow">
           {socials.map((social) => (
-            <a key={social.label} href={social.href} target="_blank" rel="noreferrer" className={`${linkClass} group inline-flex items-center gap-2`}>
+            <a key={social.label} href={social.href} target="_blank" rel="noreferrer" className={linkClass}>
               {social.label}
-              <ArrowUpRight size={15} className="text-white/40 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-[#ff5a36]" />
             </a>
           ))}
         </Column>
