@@ -116,7 +116,7 @@ const navigation = [
 const nextStatuses: Partial<Record<AdminOrderStatus, AdminOrderStatus[]>> = {
   pending_payment: ["cancelled"],
   payment_submitted: ["paid", "rejected", "cancelled"],
-  paid: ["processing", "cancelled"],
+  paid: ["processing", "shipped", "cancelled"],
   processing: ["shipped", "cancelled"],
   shipped: ["delivered", "cancelled"],
   // A returned parcel goes back to processing so a replacement can be booked.
@@ -164,6 +164,12 @@ function OrderCard({
     order.tracking_number ?? ""
   );
   const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const paymentSubmissions = [...order.manual_payment_submissions].sort(
+    (first, second) =>
+      new Date(first.created_at).getTime() - new Date(second.created_at).getTime()
+  );
+  const latestPaymentSubmission = paymentSubmissions.at(-1);
 
   useEffect(() => {
     setStatus(order.status);
@@ -211,169 +217,247 @@ function OrderCard({
   };
 
   return (
-    <article className="border border-white/15 bg-[#111214] p-5">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-        <div>
-          <p className="font-display text-3xl uppercase leading-none text-white">
-            {order.order_number}
-          </p>
-          <p className="mt-2 text-xs text-white/40">
-            {formatDate(order.created_at)} · {order.shipping_region}
-          </p>
+    <article className="overflow-hidden rounded-lg border border-white/15 bg-[#111214]">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(value => !value)}
+        className="grid w-full gap-3 p-4 text-left transition hover:bg-white/[.025] sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-5 sm:px-5"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <ChevronDown
+            size={16}
+            className={`shrink-0 text-white/35 transition-transform ${expanded ? "rotate-180" : ""}`}
+          />
+          <div className="min-w-0">
+            <p className="truncate font-display text-xl uppercase leading-none text-white">
+              {order.order_number}
+            </p>
+            <p className="mt-1.5 truncate text-xs text-white/45">
+              {customer?.full_name || "Unknown rider"} · {formatDate(order.created_at)}
+            </p>
+          </div>
         </div>
-        <div className="sm:text-right">
+        {order.status === "payment_submitted" && latestPaymentSubmission ? (
+          <div className="min-w-0 pl-[28px] sm:pl-0">
+            <p className="text-[9px] font-black uppercase tracking-[.14em] text-[#ff9a79]">Verify payment reference</p>
+            <p className="mt-1 truncate font-mono text-sm font-bold tracking-wide text-white">
+              {latestPaymentSubmission.reference_number}
+            </p>
+          </div>
+        ) : (
+          <p className="truncate pl-[28px] text-xs text-white/55 sm:pl-0">
+            {order.order_items.length} {order.order_items.length === 1 ? "item" : "items"}
+            {order.order_items[0] ? ` · ${order.order_items[0].product_name}` : ""}
+            {order.order_items.length > 1 ? ` +${order.order_items.length - 1} more` : ""}
+          </p>
+        )}
+        <div className="flex items-center justify-between pl-[28px] sm:block sm:pl-0 sm:text-right">
           <StatusBadge status={order.status} />
-          <p className="mt-2 font-bold text-white">
-            {formatMoney(
-              order.total_cents / 100,
-              order.display_currency,
-              order.fx_rate
-            )}
-          </p>
-          <p className="mt-1 text-[10px] text-white/35">
-            Base: {formatMoney(order.total_cents / 100, "PHP", 1)}
-          </p>
         </div>
-      </div>
-      <div className="mt-5 grid gap-3 border-y border-white/10 py-4 text-xs text-white/55 sm:grid-cols-2">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">
-            Customer
-          </p>
-          <p className="mt-1 text-white/75">
-            {customer?.full_name || "Unknown rider"}
-          </p>
-          <p className="text-white/45">{customer?.email || order.user_id}</p>
+        <div className="flex items-center justify-between pl-[28px] sm:block sm:pl-0 sm:text-right">
+          <span className="text-[10px] font-bold uppercase tracking-[.12em] text-white/35 sm:hidden">Total</span>
+          <div>
+            <p className="text-sm font-bold tabular-nums text-white">
+              {formatMoney(
+                order.total_cents / 100,
+                order.display_currency,
+                order.fx_rate
+              )}
+            </p>
+            <p className="mt-0.5 text-[10px] text-white/40">
+              Base {formatMoney(order.total_cents / 100, "PHP", 1)}
+            </p>
+          </div>
         </div>
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">
-            Deliver to
-          </p>
+        <span className="hidden text-[10px] font-bold uppercase tracking-[.12em] text-white/30 sm:block">
+          {expanded ? "Close" : "Details"}
+        </span>
+      </button>
+
+      {expanded ? (
+      <div className="border-t border-white/10">
+      {paymentSubmissions.length > 0 ? (
+        <section className={`mx-4 mt-4 rounded-lg border p-4 sm:mx-5 sm:p-5 ${order.status === "payment_submitted" ? "border-[#ff5a36]/60 bg-[#ff5a36]/[.07] shadow-[inset_3px_0_0_0_#ff5a36]" : "border-white/10 bg-white/[.02]"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className={`text-[10px] font-black uppercase tracking-[.16em] ${order.status === "payment_submitted" ? "text-[#ff9a79]" : "text-white/45"}`}>
+              {order.status === "payment_submitted" ? "Payment to verify" : "Payment reference"}
+            </h3>
+            {paymentSubmissions.length > 1 ? (
+              <span className="text-[10px] text-white/40">{paymentSubmissions.length} submissions · latest first</span>
+            ) : null}
+          </div>
+          <div className="mt-3 grid gap-2">
+            {[...paymentSubmissions].reverse().map((submission, index) => (
+              <div key={submission.id} className={`grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${index === 0 && order.status === "payment_submitted" ? "border-[#ff5a36]/25 bg-black/20" : "border-white/[.06] bg-black/10"}`}>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[.12em] text-white/45">
+                    {paymentMethodLabels[submission.payment_method]}
+                    {submission.payer_name ? ` · ${submission.payer_name}` : ""}
+                  </p>
+                  <p className="mt-1 break-all font-mono text-lg font-bold leading-snug tracking-wide text-white selection:bg-[#ff5a36]">
+                    {submission.reference_number}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+                  {index === 0 && order.status === "payment_submitted" ? (
+                    <span className="text-[9px] font-black uppercase tracking-[.12em] text-[#ff9a79]">Latest</span>
+                  ) : null}
+                  <p className="text-[10px] text-white/40">{formatDate(submission.created_at)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {order.status === "payment_submitted" ? (
+            <p className="mt-3 text-xs leading-5 text-white/55">
+              Match this reference with the transaction in your bank or payment account before approving.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+        <section className="min-w-0 rounded-lg border border-white/10 bg-white/[.02] p-4">
+          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Customer</h3>
+          <p className="mt-2 text-sm font-semibold text-white/85">{customer?.full_name || "Unknown rider"}</p>
+          <p className="mt-1 break-all text-xs text-white/50">{customer?.email || order.user_id}</p>
+        </section>
+        <section className="min-w-0 rounded-lg border border-white/10 bg-white/[.02] p-4">
+          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Delivery address</h3>
           {order.shipping_address ? (
             <>
-              <p className="mt-1 text-white/75">
-                {order.shipping_address.recipient_name}
-              </p>
-              <p>{formatDeliveryAddress(order.shipping_address)}</p>
-              <p className="text-white/40">{order.shipping_address.phone}</p>
+              <p className="mt-2 text-sm font-semibold text-white/85">{order.shipping_address.recipient_name}</p>
+              <p className="mt-1 text-xs leading-5 text-white/55">{formatDeliveryAddress(order.shipping_address)}</p>
+              <p className="mt-1 text-xs text-white/40">{order.shipping_address.phone}</p>
             </>
           ) : (
-            <p className="mt-1">No address</p>
+            <p className="mt-2 text-xs text-white/45">No address provided</p>
           )}
-        </div>
+        </section>
       </div>
-      <div className="mt-4 grid gap-2 border-b border-white/10 pb-4">
-        {order.order_items.map(item => (
-          <div
-            key={item.id}
-            className="flex justify-between gap-3 bg-white/[.03] px-3 py-2 text-xs text-white/60"
-          >
-            <span>
-              {item.quantity}× {item.product_name} / {item.finish}
-            </span>
-            <span className="font-bold text-white">
+
+      <section className="mx-4 mb-4 rounded-lg border border-white/10 sm:mx-5">
+        <div className="border-b border-white/10 px-4 py-3">
+          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Items in this order</h3>
+        </div>
+        <div className="divide-y divide-white/[.06] px-4">
+          {order.order_items.map(item => (
+            <div key={item.id} className="flex items-center justify-between gap-4 py-3 text-sm">
+              <div className="min-w-0 text-white/70">
+                <span className="mr-2 text-xs font-bold text-white/40">{item.quantity}×</span>
+                <span className="font-medium text-white/85">{item.product_name}</span>
+                <span className="text-white/40"> / {item.finish}</span>
+              </div>
+              <span className="shrink-0 font-semibold tabular-nums text-white">
+                {formatMoney(
+                  item.line_total_cents / 100,
+                  order.display_currency,
+                  order.fx_rate
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-white/10 bg-white/[.02] px-4 py-3">
+          <div className="ml-auto grid max-w-xs grid-cols-2 gap-x-8 gap-y-2 text-xs">
+            <span className="text-white/45">Subtotal</span>
+            <span className="text-right tabular-nums text-white/70">
               {formatMoney(
-                item.line_total_cents / 100,
+                order.subtotal_cents / 100,
+                order.display_currency,
+                order.fx_rate
+              )}
+            </span>
+            <span className="text-white/45">Shipping</span>
+            <span className="text-right tabular-nums text-white/70">
+              {order.shipping_cents === 0
+                ? "Included"
+                : formatMoney(
+                    order.shipping_cents / 100,
+                    order.display_currency,
+                    order.fx_rate
+                  )}
+            </span>
+            <span className="border-t border-white/10 pt-2 font-bold text-white/75">Total</span>
+            <span className="border-t border-white/10 pt-2 text-right font-bold tabular-nums text-white">
+              {formatMoney(
+                order.total_cents / 100,
                 order.display_currency,
                 order.fx_rate
               )}
             </span>
           </div>
-        ))}
-        <div className="flex justify-between gap-3 px-3 pt-1 text-[10px] font-bold uppercase tracking-[.14em] text-white/35">
-          <span>Subtotal</span>
-          <span>
-            {formatMoney(
-              order.subtotal_cents / 100,
-              order.display_currency,
-              order.fx_rate
-            )}
-          </span>
         </div>
-        <div className="flex justify-between gap-3 px-3 text-[10px] font-bold uppercase tracking-[.14em] text-white/35">
-          <span>Shipping</span>
-          <span>
-            {order.shipping_cents === 0
-              ? "Included"
-              : formatMoney(
-                  order.shipping_cents / 100,
-                  order.display_currency,
-                  order.fx_rate
-                )}
-          </span>
+      </section>
+
+      <section className="mx-4 mb-4 rounded-lg border border-white/10 bg-white/[.02] p-4 sm:mx-5 sm:p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/45">Customer order progress</h3>
+          <span className="text-[10px] text-white/30">Visible to the customer</span>
         </div>
-      </div>
-      <div className="mt-4 border border-white/10 p-3">
-        <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">
-          Order progress customers can see
-        </p>
-        <OrderTimeline className="mt-3" timeline={timeline} />
-      </div>
-      {order.manual_payment_submissions.length > 0 ? (
-        <div className="mt-4 border border-white/10 p-3 text-xs text-white/55">
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">
-            Payment references
-          </p>
-          {order.manual_payment_submissions.map(submission => (
-            <p key={submission.id} className="mt-2">
-              {paymentMethodLabels[submission.payment_method]} ·{" "}
-              <span className="font-bold text-white">
-                {submission.reference_number}
-              </span>{" "}
-              · {formatDate(submission.created_at)}
-            </p>
-          ))}
+        <OrderTimeline className="mt-4" timeline={timeline} />
+      </section>
+
+      <section className="border-t border-white/10 bg-black/10 p-4 sm:p-5">
+        <div className="mb-3">
+          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/45">Update fulfillment</h3>
+          <p className="mt-1 text-xs text-white/35">Change the order status or save a tracking number.</p>
         </div>
-      ) : null}
-      <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 sm:grid-cols-2">
-        <label className={labelClass}>
-          Status
-          <select
-            value={status}
-            onChange={event =>
-              setStatus(event.target.value as AdminOrderStatus)
-            }
-            disabled={available.length === 0}
-            className={`${inputClass} disabled:opacity-50`}
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+          <label className={labelClass}>
+            Status
+            <select
+              value={status}
+              onChange={event =>
+                setStatus(event.target.value as AdminOrderStatus)
+              }
+              disabled={available.length === 0}
+              className={`${inputClass} disabled:opacity-50`}
+            >
+              {statusOptions.map(item => (
+                <option key={item} value={item} className="bg-[#111214]">
+                  {item === "shipped"
+                    ? "Shipped — handed to courier"
+                    : orderStatusLabels[item]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={labelClass}>
+            Tracking number
+            <input
+              value={trackingNumber}
+              onChange={event => setTrackingNumber(event.target.value)}
+              className={inputClass}
+              placeholder="Optional"
+            />
+          </label>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="inline-flex h-11 items-center justify-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black transition hover:bg-[#ff704f] disabled:opacity-50 sm:min-w-40"
           >
-            {statusOptions.map(item => (
-              <option key={item} value={item} className="bg-[#111214]">
-                {orderStatusLabels[item]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={labelClass}>
-          Tracking number
-          <input
-            value={trackingNumber}
-            onChange={event => setTrackingNumber(event.target.value)}
-            className={inputClass}
-            placeholder="Optional"
-          />
-        </label>
-        <button
-          onClick={save}
-          disabled={saving}
-          className="inline-flex h-10 items-center justify-center gap-2 bg-[#ff5a36] px-4 text-[10px] font-black uppercase tracking-[.14em] text-black disabled:opacity-50 sm:col-span-2"
-        >
-          {saving ? (
-            "Saving..."
-          ) : (
-            <>
-              <Save size={14} />
-              {status === order.status
-                ? "Save details"
-                : `Mark ${orderStatusLabels[status].toLowerCase()}`}
-            </>
-          )}
-        </button>
-        <p className="text-[10px] leading-4 text-white/35 sm:col-span-2">
-          {available.length === 0
-            ? "This order is closed. You can still record its tracking number."
-            : "Leave the status unchanged to save the tracking number only."}
-        </p>
+            {saving ? (
+              "Saving..."
+            ) : (
+              <>
+                <Save size={14} />
+                {status === order.status
+                  ? "Save details"
+                  : `Mark ${orderStatusLabels[status].toLowerCase()}`}
+              </>
+            )}
+          </button>
+          <p className="text-[10px] leading-4 text-white/35 sm:col-span-3">
+            {available.length === 0
+              ? "This order is closed. You can still record its tracking number."
+              : status === "shipped" && order.status !== "shipped"
+                ? "Mark as shipped once the parcel has left the workshop. The customer timeline will update with the ship-out time."
+                : "Leave the status unchanged to save the tracking number only."}
+          </p>
+        </div>
+      </section>
       </div>
+      ) : null}
     </article>
   );
 }

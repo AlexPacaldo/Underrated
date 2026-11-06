@@ -141,7 +141,7 @@ export function buildOrderTimeline(order: OrderTimelineInput): OrderTimeline {
   const steps: OrderTimelineStep[] = [
     { key: "placed", label: "Order placed", detail: "We have your order.", at: order.createdAt, state: "done" },
     { key: "paid", label: "Payment verified", detail: "Payment confirmed against the submitted reference.", at: order.paidAt ?? null, state: "todo" },
-    { key: "shipped", label: "Order shipped out", detail: "The parcel left the workshop.", at: order.shippedAt ?? null, state: "todo" },
+    { key: "shipped", label: "Order shipped out", detail: "Your parcel has been handed to the courier and is on its way to you.", at: order.shippedAt ?? null, state: "todo" },
     { key: "received", label: "Order received", detail: "Marked as delivered.", at: order.deliveredAt ?? null, state: "todo" },
   ];
 
