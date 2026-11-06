@@ -23,7 +23,7 @@ export const emptyDeliveryAddress: DeliveryAddress = {
   region: "",
   postal_code: "",
   country: "",
-  country_code: "PH",
+  country_code: "OTHER",
   delivery_instructions: "",
 };
 
@@ -32,10 +32,28 @@ function text(value: unknown) {
 }
 
 export function normalizeDeliveryAddress(value: unknown): DeliveryAddress {
-  const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const rawCountryCode = typeof source.country_code === "string" ? source.country_code.toUpperCase() : "";
-  const countryCode: DeliveryCountryCode = rawCountryCode === "PH" || rawCountryCode === "US" || rawCountryCode === "CA" ? rawCountryCode : "OTHER";
-  const country = countryCode === "PH" ? "Philippines" : countryCode === "US" ? "United States" : countryCode === "CA" ? "Canada" : text(source.country);
+  const source =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const rawCountryCode =
+    typeof source.country_code === "string"
+      ? source.country_code.toUpperCase()
+      : "";
+  const countryCode: DeliveryCountryCode =
+    rawCountryCode === "PH" ||
+    rawCountryCode === "US" ||
+    rawCountryCode === "CA"
+      ? rawCountryCode
+      : "OTHER";
+  const country =
+    countryCode === "PH"
+      ? "Philippines"
+      : countryCode === "US"
+        ? "United States"
+        : countryCode === "CA"
+          ? "Canada"
+          : text(source.country);
 
   return {
     recipient_name: text(source.recipient_name),
@@ -51,28 +69,45 @@ export function normalizeDeliveryAddress(value: unknown): DeliveryAddress {
   };
 }
 
-export function isValidDeliveryAddress(address: DeliveryAddress | null | undefined) {
+export function isValidDeliveryAddress(
+  address: DeliveryAddress | null | undefined
+) {
   const normalized = normalizeDeliveryAddress(address);
   return Boolean(
-    (address?.country_code === "PH" || address?.country_code === "US" || address?.country_code === "CA" || address?.country_code === "OTHER") &&
-      normalized.recipient_name &&
-      normalized.phone &&
-      normalized.line1 &&
-      normalized.city &&
-      normalized.region &&
-      normalized.postal_code &&
-      normalized.country,
+    (address?.country_code === "US" ||
+      address?.country_code === "CA" ||
+      address?.country_code === "OTHER") &&
+    normalized.recipient_name &&
+    normalized.phone &&
+    normalized.line1 &&
+    normalized.city &&
+    normalized.region &&
+    normalized.postal_code &&
+    normalized.country
   );
 }
 
-export function shippingRegionForAddress(address: DeliveryAddress | null | undefined): ShippingRegion {
+export function shippingRegionForAddress(
+  address: DeliveryAddress | null | undefined
+): ShippingRegion {
   if (address?.country_code === "PH") return "ph";
   if (address?.country_code === "US") return "us";
   if (address?.country_code === "CA") return "canada";
   return "international";
 }
 
-export function formatDeliveryAddress(address: DeliveryAddress | null | undefined) {
+export function formatDeliveryAddress(
+  address: DeliveryAddress | null | undefined
+) {
   const normalized = normalizeDeliveryAddress(address);
-  return [normalized.line1, normalized.line2, normalized.city, normalized.region, normalized.postal_code, normalized.country].filter(Boolean).join(", ");
+  return [
+    normalized.line1,
+    normalized.line2,
+    normalized.city,
+    normalized.region,
+    normalized.postal_code,
+    normalized.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }

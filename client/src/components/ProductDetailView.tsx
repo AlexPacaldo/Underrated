@@ -11,11 +11,22 @@ import { ArrowLeft, Minus, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
+import { useStore } from "@/contexts/StoreContext";
 
 export default function ProductDetailView({ product, onAdd, preview, topOffset = true, minHeight = true, backHref = "/shop", backLabel = "Shop" }: { product: Product; onAdd?: (product: Product, finish: string, quantity: number) => void; preview?: ProductPreviewMode | null; topOffset?: boolean; minHeight?: boolean; backHref?: string; backLabel?: string }) {
   const { formatMoney } = useCurrency();
+  const { cart } = useStore();
   const [finish, setFinish] = useState(product.finishes[0] ?? "");
   const [quantity, setQuantity] = useState(1);
+  const availableStock = Math.max(
+    0,
+    product.stockQuantity - product.reservedQuantity
+  );
+  const inCartQuantity = cart
+    .filter(line => line.id === product.id)
+    .reduce((sum, line) => sum + line.quantity, 0);
+  const remainingStock = Math.max(0, availableStock - inCartQuantity);
+  const maxOrderQuantity = Math.min(99, remainingStock);
   const weight = product.specs.find((spec) => spec.label.toLowerCase() === "weight")?.value;
 
   // Keyed on the finishes list rather than the product object so typing in another
@@ -28,6 +39,12 @@ export default function ProductDetailView({ product, onAdd, preview, topOffset =
 
   const add = () => {
     if (!onAdd) return;
+    if (quantity > remainingStock) {
+      toast.error("Not enough stock available.", {
+        description: `Only ${remainingStock} additional unit(s) can be added right now.`,
+      });
+      return;
+    }
     onAdd(product, finish, quantity);
     toast.success(`${product.name} added`, { description: `${quantity} × ${finish}` });
   };
@@ -71,16 +88,18 @@ export default function ProductDetailView({ product, onAdd, preview, topOffset =
 
             <p className="mt-5 flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-[.13em] text-white/55">
               <span className="size-1.5 shrink-0 bg-[#ff5a36]" />
-              In stock
+              {availableStock > 0
+                ? `${availableStock} available${inCartQuantity ? ` · ${inCartQuantity} in your cart` : ""}`
+                : "Currently out of stock"}
             </p>
 
             <div className="mt-4 flex gap-2.5">
               <div className="flex h-12 border border-white/15">
                 <button onClick={() => setQuantity((value) => Math.max(1, value - 1))} className="grid w-11 place-items-center text-white/55 transition hover:text-white" aria-label="Decrease quantity"><Minus size={16} /></button>
                 <span className="grid w-10 place-items-center text-sm font-bold text-white">{quantity}</span>
-                <button onClick={() => setQuantity((value) => Math.min(99, value + 1))} disabled={quantity >= 99} className="grid w-11 place-items-center text-white/55 transition hover:text-white disabled:opacity-30" aria-label="Increase quantity"><Plus size={16} /></button>
+                <button onClick={() => setQuantity((value) => Math.min(maxOrderQuantity, value + 1))} disabled={quantity >= maxOrderQuantity} className="grid w-11 place-items-center text-white/55 transition hover:text-white disabled:opacity-30" aria-label="Increase quantity"><Plus size={16} /></button>
               </div>
-              <button onClick={add} disabled={!finish} className="h-12 flex-1 bg-[#ff5a36] px-5 text-xs font-black uppercase tracking-[.16em] text-black transition hover:bg-white active:scale-[.985] disabled:opacity-50">Add to cart</button>
+              <button onClick={add} disabled={!finish || remainingStock === 0 || quantity > remainingStock} className="h-12 flex-1 bg-[#ff5a36] px-5 text-xs font-black uppercase tracking-[.16em] text-black transition hover:bg-white active:scale-[.985] disabled:opacity-50">{availableStock ? (remainingStock ? "Add to cart" : "Stock limit reached") : "Out of stock"}</button>
             </div>
 
             <div className="mt-8 grid grid-cols-2 gap-8 border-y border-white/10 py-5">

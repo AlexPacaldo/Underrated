@@ -1,18 +1,32 @@
-export type ProductVisual = "hoods" | "valve" | "saddle" | "tape" | "stem" | "stand";
+export type ProductVisual =
+  "hoods" | "valve" | "saddle" | "tape" | "stem" | "stand";
 
 /**
  * Where a photo sits inside the frame that crops it. Photos always fill their frame, so this is what
  * decides which part of the shot survives the crop, on the card, in the gallery and in the zoom.
  */
-export const productImagePositions = ["top left", "top", "top right", "left", "center", "right", "bottom left", "bottom", "bottom right"] as const;
+export const productImagePositions = [
+  "top left",
+  "top",
+  "top right",
+  "left",
+  "center",
+  "right",
+  "bottom left",
+  "bottom",
+  "bottom right",
+] as const;
 
-export type ProductImagePosition = (typeof productImagePositions)[number] | `${number}% ${number}%`;
+export type ProductImagePosition =
+  (typeof productImagePositions)[number] | `${number}% ${number}%`;
 
 export const productImageFrames = ["wide", "portrait"] as const;
 
 export type ProductImageFrame = (typeof productImageFrames)[number];
 
-export function isProductImageFrame(value: unknown): value is ProductImageFrame {
+export function isProductImageFrame(
+  value: unknown
+): value is ProductImageFrame {
   return productImageFrames.some(frame => frame === value);
 }
 
@@ -20,14 +34,18 @@ export function productImageFrameRatio(frame?: ProductImageFrame) {
   return frame === "portrait" ? 4 / 5 : 4 / 3;
 }
 
-export function isProductImagePosition(value: unknown): value is ProductImagePosition {
+export function isProductImagePosition(
+  value: unknown
+): value is ProductImagePosition {
   if (typeof value !== "string") return false;
   if ((productImagePositions as readonly string[]).includes(value)) return true;
   // Also accept percentage format like "50% 50%"
   return /^\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%$/.test(value);
 }
 
-export function productImagePositionCoordinates(position?: ProductImagePosition): [number, number] {
+export function productImagePositionCoordinates(
+  position?: ProductImagePosition
+): [number, number] {
   if (!position) return [50, 50];
   const percentages = position.match(/^(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/);
   if (percentages) return [Number(percentages[1]), Number(percentages[2])];
@@ -40,7 +58,10 @@ export function productImagePositionCoordinates(position?: ProductImagePosition)
   return [x, y];
 }
 
-export function formatProductImagePosition(x: number, y: number): ProductImagePosition {
+export function formatProductImagePosition(
+  x: number,
+  y: number
+): ProductImagePosition {
   return `${x.toFixed(2)}% ${y.toFixed(2)}%` as ProductImagePosition;
 }
 
@@ -60,7 +81,10 @@ export function productPhotos(product: Pick<Product, "image" | "images">) {
 }
 
 /** Keeps a framing only if the photo still exists and the value is one of the nine real positions. */
-export function normalizeImagePositions(photos: string[], positions: unknown): Partial<Record<string, ProductImagePosition>> {
+export function normalizeImagePositions(
+  photos: string[],
+  positions: unknown
+): Partial<Record<string, ProductImagePosition>> {
   const result: Partial<Record<string, ProductImagePosition>> = {};
   if (!positions || typeof positions !== "object") return result;
   const source = positions as Record<string, unknown>;
@@ -72,7 +96,10 @@ export function normalizeImagePositions(photos: string[], positions: unknown): P
 }
 
 /** Keeps a frame choice only for photos that still exist. Missing choices use the wide default. */
-export function normalizeImageFrames(photos: string[], frames: unknown): Partial<Record<string, ProductImageFrame>> {
+export function normalizeImageFrames(
+  photos: string[],
+  frames: unknown
+): Partial<Record<string, ProductImageFrame>> {
   const result: Partial<Record<string, ProductImageFrame>> = {};
   if (!frames || typeof frames !== "object") return result;
   const source = frames as Record<string, unknown>;
@@ -89,6 +116,12 @@ export type Product = {
   name: string;
   category: string;
   price: number;
+  /** Packed shipping weight used by checkout, in kilograms. */
+  shippingWeightKg?: number;
+  /** Physical units on hand, including units reserved for open orders. */
+  stockQuantity: number;
+  /** Units held for orders that have not shipped yet. */
+  reservedQuantity: number;
   badge?: string;
   descriptor: string;
   description: string;
@@ -129,9 +162,12 @@ export const products: Product[] = [
     name: "Stealth Hoods",
     category: "Hoods",
     price: 3800,
+    stockQuantity: 0,
+    reservedQuantity: 0,
     badge: "New drop",
     descriptor: "Variation without compromise.",
-    description: "A sculpted grip profile for the riders who tune every touchpoint. Built to feel planted in the sprint and quiet on the long way home.",
+    description:
+      "A sculpted grip profile for the riders who tune every touchpoint. Built to feel planted in the sprint and quiet on the long way home.",
     finishes: ["Graphite", "Iced White", "Deep Blue"],
     visual: "hoods",
     specs: [
@@ -141,8 +177,13 @@ export const products: Product[] = [
     ],
     fitment: {
       headline: "Built around road STI profiles.",
-      compatibility: ["Road STI lever bodies", "Pairs with standard bar tape wraps", "Use as a matched left/right pair"],
-      checkBeforeRide: "Confirm your lever-body shape and current hood dimensions before removing the original pair.",
+      compatibility: [
+        "Road STI lever bodies",
+        "Pairs with standard bar tape wraps",
+        "Use as a matched left/right pair",
+      ],
+      checkBeforeRide:
+        "Confirm your lever-body shape and current hood dimensions before removing the original pair.",
     },
     featured: true,
     sortOrder: 1,
@@ -153,9 +194,12 @@ export const products: Product[] = [
     name: "Rocket Valve Cap",
     category: "Valve Caps",
     price: 950,
+    stockQuantity: 0,
+    reservedQuantity: 0,
     badge: "Limited run",
     descriptor: "Small part. Loud signal.",
-    description: "A pocket-sized detail with a machined finish and enough color to change the whole build. Sold as a pair.",
+    description:
+      "A pocket-sized detail with a machined finish and enough color to change the whole build. Sold as a pair.",
     finishes: ["Signal Tangerine", "Iced White", "Deep Blue"],
     image: "/manus-storage/underrated-valvecap_f8df5399.jpg",
     visual: "valve",
@@ -166,8 +210,13 @@ export const products: Product[] = [
     ],
     fitment: {
       headline: "Made for Presta valve stems.",
-      compatibility: ["Road and track tubes with Presta valves", "Tubeless valves with standard Presta threads", "Sold as a matching pair"],
-      checkBeforeRide: "Check that your valve core and extender leave enough exposed thread for a secure hand-tight fit.",
+      compatibility: [
+        "Road and track tubes with Presta valves",
+        "Tubeless valves with standard Presta threads",
+        "Sold as a matching pair",
+      ],
+      checkBeforeRide:
+        "Check that your valve core and extender leave enough exposed thread for a secure hand-tight fit.",
     },
     featured: true,
     sortOrder: 2,
@@ -178,8 +227,11 @@ export const products: Product[] = [
     name: "Iced Saddle",
     category: "Saddles",
     price: 6500,
+    stockQuantity: 0,
+    reservedQuantity: 0,
     descriptor: "A clean break from the expected.",
-    description: "A narrow-profile saddle shaped for quick position changes, finished in an ice-white composite surface that turns a build into a statement.",
+    description:
+      "A narrow-profile saddle shaped for quick position changes, finished in an ice-white composite surface that turns a build into a statement.",
     finishes: ["Iced White", "Graphite"],
     image: "/manus-storage/underrated-saddle_50233c3e.jpg",
     visual: "saddle",
@@ -190,8 +242,13 @@ export const products: Product[] = [
     ],
     fitment: {
       headline: "A 143 mm profile with standard round rails.",
-      compatibility: ["Seatposts designed for round rails", "Road, track, and gravel build positions", "Works with conventional two-bolt clamps"],
-      checkBeforeRide: "Confirm rail-clamp compatibility and observe your seatpost’s recommended torque before final adjustment.",
+      compatibility: [
+        "Seatposts designed for round rails",
+        "Road, track, and gravel build positions",
+        "Works with conventional two-bolt clamps",
+      ],
+      checkBeforeRide:
+        "Confirm rail-clamp compatibility and observe your seatpost’s recommended torque before final adjustment.",
     },
     featured: true,
     sortOrder: 3,
@@ -202,8 +259,11 @@ export const products: Product[] = [
     name: "Deep Blue Tape",
     category: "Cockpit",
     price: 1800,
+    stockQuantity: 0,
+    reservedQuantity: 0,
     descriptor: "Hold the line.",
-    description: "Cushioned tape with a tightly controlled wrap texture, made to pull a cockpit together without swallowing the detail.",
+    description:
+      "Cushioned tape with a tightly controlled wrap texture, made to pull a cockpit together without swallowing the detail.",
     finishes: ["Deep Blue", "Graphite", "Iced White"],
     visual: "tape",
     specs: [
@@ -213,8 +273,13 @@ export const products: Product[] = [
     ],
     fitment: {
       headline: "Cut and wrap for any drop-bar cockpit.",
-      compatibility: ["Standard road and gravel drop bars", "Pairs with most road STI hoods", "Enough length for a full two-side wrap"],
-      checkBeforeRide: "Measure your current wrap and leave a little excess before trimming the final bar-end finish.",
+      compatibility: [
+        "Standard road and gravel drop bars",
+        "Pairs with most road STI hoods",
+        "Enough length for a full two-side wrap",
+      ],
+      checkBeforeRide:
+        "Measure your current wrap and leave a little excess before trimming the final bar-end finish.",
     },
     featured: true,
     sortOrder: 4,
@@ -225,8 +290,11 @@ export const products: Product[] = [
     name: "Covert Stem",
     category: "Cockpit",
     price: 4500,
+    stockQuantity: 0,
+    reservedQuantity: 0,
     descriptor: "No wasted surface.",
-    description: "A compact forged alloy stem with a low visual profile and an unapologetically dark finish.",
+    description:
+      "A compact forged alloy stem with a low visual profile and an unapologetically dark finish.",
     finishes: ["Graphite"],
     visual: "stem",
     specs: [
@@ -236,8 +304,13 @@ export const products: Product[] = [
     ],
     fitment: {
       headline: "Made for a 31.8 mm bar and 1⅛ in steerer.",
-      compatibility: ["31.8 mm road or gravel handlebars", "1⅛ in threadless steerers", "Available in three reach lengths"],
-      checkBeforeRide: "Confirm handlebar clamp size, steerer diameter, and cable clearance before you commit to a length.",
+      compatibility: [
+        "31.8 mm road or gravel handlebars",
+        "1⅛ in threadless steerers",
+        "Available in three reach lengths",
+      ],
+      checkBeforeRide:
+        "Confirm handlebar clamp size, steerer diameter, and cable clearance before you commit to a length.",
     },
     sortOrder: 5,
   },
@@ -247,9 +320,12 @@ export const products: Product[] = [
     name: "Trophy Display Stand",
     category: "Accessories",
     price: 2500,
+    stockQuantity: 0,
+    reservedQuantity: 0,
     badge: "Workshop pick",
     descriptor: "Park it with intention.",
-    description: "A compact display piece for the build that refuses to hide in a corner between rides.",
+    description:
+      "A compact display piece for the build that refuses to hide in a corner between rides.",
     finishes: ["Graphite", "Signal Tangerine"],
     visual: "stand",
     specs: [
@@ -259,8 +335,13 @@ export const products: Product[] = [
     ],
     fitment: {
       headline: "A display rest for road and track builds.",
-      compatibility: ["Road and track wheel profiles", "Clean indoor floors and studio setups", "Non-marking rubber contact point"],
-      checkBeforeRide: "Use the stand only on a level surface and confirm the wheel sits fully in the support channel.",
+      compatibility: [
+        "Road and track wheel profiles",
+        "Clean indoor floors and studio setups",
+        "Non-marking rubber contact point",
+      ],
+      checkBeforeRide:
+        "Use the stand only on a level surface and confirm the wheel sits fully in the support channel.",
     },
     sortOrder: 6,
   },
@@ -274,7 +355,12 @@ export const categories: CatalogCategory[] = [
   { id: "accessories", name: "Accessories", sortOrder: 50 },
 ];
 
-export function money(value: number, currency = "PHP", rate = 1, locale = "en-PH") {
+export function money(
+  value: number,
+  currency = "PHP",
+  rate = 1,
+  locale = "en-PH"
+) {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,

@@ -1,11 +1,11 @@
 /**
- * Where a rider sends the money. Read once here so the cart and the order detail
- * page show the same account details instead of drifting apart.
+ * PayPal payment QR displayed at checkout and on pending order details.
  */
+const configuredPaypalQr = import.meta.env.VITE_PAYPAL_QR_IMAGE?.trim() || "";
+
 export const paymentDetails = {
-  /**
-   * Where the customer goes to actually pay by PayPal. Empty means the store has
-   * not set one, which checkout reports instead of linking to nowhere.
-   */
-  paypalLink: import.meta.env.VITE_PAYPAL_LINK || "",
+  /** Public image path, usually a file stored in the app's public directory. */
+  paypalQrImage:
+    configuredPaypalQr || (import.meta.env.DEV ? "/paypal-qr-demo.svg" : ""),
+  paypalQrIsDemo: !configuredPaypalQr && import.meta.env.DEV,
 };

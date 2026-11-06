@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Archive,
   ArrowLeft,
+  Boxes,
   Check,
   ChevronDown,
   ChevronUp,
@@ -32,7 +33,12 @@ import { usePreviewScale } from "@/components/admin/usePreviewScale";
 import { useAuth, type AccountRole } from "@/contexts/AuthContext";
 import { useCatalog } from "@/contexts/CatalogContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
-import { productImagePositions, productImageFrameRatio, formatProductImagePosition, productImagePositionCoordinates } from "@/data/products";
+import {
+  productImagePositions,
+  productImageFrameRatio,
+  formatProductImagePosition,
+  productImagePositionCoordinates,
+} from "@/data/products";
 import type {
   CatalogCategory,
   Product,
@@ -45,6 +51,11 @@ import {
 } from "@/data/storefront";
 import { formatDeliveryAddress } from "@/lib/deliveryAddress";
 import { paymentMethodLabels } from "@/lib/accountOrders";
+import {
+  fetchShippingRates,
+  saveShippingRate,
+  type ShippingRate,
+} from "@/lib/shipping";
 import {
   buildOrderTimeline,
   countOrdersByFilter,
@@ -86,6 +97,7 @@ import {
   saveAdminCategory,
   saveAdminHomepage,
   saveAdminProduct,
+  saveAdminProductStock,
   setAdminProductArchived,
   setAdminProductFeatured,
   setAdminProfileRole,
@@ -100,7 +112,9 @@ type Section =
   | "overview"
   | "orders"
   | "products"
+  | "inventory"
   | "categories"
+  | "shipping"
   | "homepage"
   | "roles";
 
@@ -108,7 +122,9 @@ const navigation = [
   { id: "overview" as const, label: "Overview", icon: LayoutDashboard },
   { id: "orders" as const, label: "Orders", icon: Package },
   { id: "products" as const, label: "Shop items", icon: Archive },
+  { id: "inventory" as const, label: "Inventory", icon: Boxes },
   { id: "categories" as const, label: "Categories", icon: Tags },
+  { id: "shipping" as const, label: "Shipping rates", icon: Package },
   { id: "homepage" as const, label: "Homepage", icon: ImagePlus },
   { id: "roles" as const, label: "Team access", icon: Users },
 ];
@@ -118,7 +134,7 @@ const nextStatuses: Partial<Record<AdminOrderStatus, AdminOrderStatus[]>> = {
   payment_submitted: ["paid", "rejected", "cancelled"],
   paid: ["processing", "shipped", "cancelled"],
   processing: ["shipped", "cancelled"],
-  shipped: ["delivered", "cancelled"],
+  shipped: ["delivered"],
   // A returned parcel goes back to processing so a replacement can be booked.
   // Catching it remains available from the general rule in the database.
   returned: ["processing", "cancelled"],
@@ -167,18 +183,15 @@ function OrderCard({
   const [expanded, setExpanded] = useState(false);
   const paymentSubmissions = [...order.manual_payment_submissions].sort(
     (first, second) =>
-      new Date(first.created_at).getTime() - new Date(second.created_at).getTime()
+      new Date(first.created_at).getTime() -
+      new Date(second.created_at).getTime()
   );
   const latestPaymentSubmission = paymentSubmissions.at(-1);
 
   useEffect(() => {
     setStatus(order.status);
     setTrackingNumber(order.tracking_number ?? "");
-  }, [
-    order.id,
-    order.status,
-    order.tracking_number,
-  ]);
+  }, [order.id, order.status, order.tracking_number]);
 
   // The rider reads the same rail on the order page, so the desk shows exactly
   // what they will see after a status change is saved.
@@ -195,11 +208,7 @@ function OrderCard({
   const save = async () => {
     setSaving(true);
     try {
-      await updateAdminOrderStatus(
-        order.id,
-        status,
-        trackingNumber
-      );
+      await updateAdminOrderStatus(order.id, status, trackingNumber);
       toast.success("Order updated", {
         description:
           status === order.status
@@ -234,29 +243,39 @@ function OrderCard({
               {order.order_number}
             </p>
             <p className="mt-1.5 truncate text-xs text-white/45">
-              {customer?.full_name || "Unknown rider"} · {formatDate(order.created_at)}
+              {customer?.full_name || "Unknown rider"} ·{" "}
+              {formatDate(order.created_at)}
             </p>
           </div>
         </div>
         {order.status === "payment_submitted" && latestPaymentSubmission ? (
           <div className="min-w-0 pl-[28px] sm:pl-0">
-            <p className="text-[9px] font-black uppercase tracking-[.14em] text-[#ff9a79]">Verify payment reference</p>
+            <p className="text-[9px] font-black uppercase tracking-[.14em] text-[#ff9a79]">
+              Verify payment reference
+            </p>
             <p className="mt-1 truncate font-mono text-sm font-bold tracking-wide text-white">
               {latestPaymentSubmission.reference_number}
             </p>
           </div>
         ) : (
           <p className="truncate pl-[28px] text-xs text-white/55 sm:pl-0">
-            {order.order_items.length} {order.order_items.length === 1 ? "item" : "items"}
-            {order.order_items[0] ? ` · ${order.order_items[0].product_name}` : ""}
-            {order.order_items.length > 1 ? ` +${order.order_items.length - 1} more` : ""}
+            {order.order_items.length}{" "}
+            {order.order_items.length === 1 ? "item" : "items"}
+            {order.order_items[0]
+              ? ` · ${order.order_items[0].product_name}`
+              : ""}
+            {order.order_items.length > 1
+              ? ` +${order.order_items.length - 1} more`
+              : ""}
           </p>
         )}
         <div className="flex items-center justify-between pl-[28px] sm:block sm:pl-0 sm:text-right">
           <StatusBadge status={order.status} />
         </div>
         <div className="flex items-center justify-between pl-[28px] sm:block sm:pl-0 sm:text-right">
-          <span className="text-[10px] font-bold uppercase tracking-[.12em] text-white/35 sm:hidden">Total</span>
+          <span className="text-[10px] font-bold uppercase tracking-[.12em] text-white/35 sm:hidden">
+            Total
+          </span>
           <div>
             <p className="text-sm font-bold tabular-nums text-white">
               {formatMoney(
@@ -276,187 +295,240 @@ function OrderCard({
       </button>
 
       {expanded ? (
-      <div className="border-t border-white/10">
-      {paymentSubmissions.length > 0 ? (
-        <section className={`mx-4 mt-4 rounded-lg border p-4 sm:mx-5 sm:p-5 ${order.status === "payment_submitted" ? "border-[#ff5a36]/60 bg-[#ff5a36]/[.07] shadow-[inset_3px_0_0_0_#ff5a36]" : "border-white/10 bg-white/[.02]"}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className={`text-[10px] font-black uppercase tracking-[.16em] ${order.status === "payment_submitted" ? "text-[#ff9a79]" : "text-white/45"}`}>
-              {order.status === "payment_submitted" ? "Payment to verify" : "Payment reference"}
-            </h3>
-            {paymentSubmissions.length > 1 ? (
-              <span className="text-[10px] text-white/40">{paymentSubmissions.length} submissions · latest first</span>
-            ) : null}
-          </div>
-          <div className="mt-3 grid gap-2">
-            {[...paymentSubmissions].reverse().map((submission, index) => (
-              <div key={submission.id} className={`grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${index === 0 && order.status === "payment_submitted" ? "border-[#ff5a36]/25 bg-black/20" : "border-white/[.06] bg-black/10"}`}>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[.12em] text-white/45">
-                    {paymentMethodLabels[submission.payment_method]}
-                    {submission.payer_name ? ` · ${submission.payer_name}` : ""}
-                  </p>
-                  <p className="mt-1 break-all font-mono text-lg font-bold leading-snug tracking-wide text-white selection:bg-[#ff5a36]">
-                    {submission.reference_number}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
-                  {index === 0 && order.status === "payment_submitted" ? (
-                    <span className="text-[9px] font-black uppercase tracking-[.12em] text-[#ff9a79]">Latest</span>
-                  ) : null}
-                  <p className="text-[10px] text-white/40">{formatDate(submission.created_at)}</p>
-                </div>
+        <div className="border-t border-white/10">
+          {paymentSubmissions.length > 0 ? (
+            <section
+              className={`mx-4 mt-4 rounded-lg border p-4 sm:mx-5 sm:p-5 ${order.status === "payment_submitted" ? "border-[#ff5a36]/60 bg-[#ff5a36]/[.07] shadow-[inset_3px_0_0_0_#ff5a36]" : "border-white/10 bg-white/[.02]"}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3
+                  className={`text-[10px] font-black uppercase tracking-[.16em] ${order.status === "payment_submitted" ? "text-[#ff9a79]" : "text-white/45"}`}
+                >
+                  {order.status === "payment_submitted"
+                    ? "Payment to verify"
+                    : "Payment reference"}
+                </h3>
+                {paymentSubmissions.length > 1 ? (
+                  <span className="text-[10px] text-white/40">
+                    {paymentSubmissions.length} submissions · latest first
+                  </span>
+                ) : null}
               </div>
-            ))}
-          </div>
-          {order.status === "payment_submitted" ? (
-            <p className="mt-3 text-xs leading-5 text-white/55">
-              Match this reference with the transaction in your bank or payment account before approving.
-            </p>
+              <div className="mt-3 grid gap-2">
+                {[...paymentSubmissions].reverse().map((submission, index) => (
+                  <div
+                    key={submission.id}
+                    className={`grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center ${index === 0 && order.status === "payment_submitted" ? "border-[#ff5a36]/25 bg-black/20" : "border-white/[.06] bg-black/10"}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-[.12em] text-white/45">
+                        {paymentMethodLabels[submission.payment_method]}
+                        {submission.payer_name
+                          ? ` · ${submission.payer_name}`
+                          : ""}
+                      </p>
+                      <p className="mt-1 break-all font-mono text-lg font-bold leading-snug tracking-wide text-white selection:bg-[#ff5a36]">
+                        {submission.reference_number}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+                      {index === 0 && order.status === "payment_submitted" ? (
+                        <span className="text-[9px] font-black uppercase tracking-[.12em] text-[#ff9a79]">
+                          Latest
+                        </span>
+                      ) : null}
+                      <p className="text-[10px] text-white/40">
+                        {formatDate(submission.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {order.status === "payment_submitted" ? (
+                <p className="mt-3 text-xs leading-5 text-white/55">
+                  Match this reference with the transaction in your bank or
+                  payment account before approving.
+                </p>
+              ) : null}
+            </section>
           ) : null}
-        </section>
-      ) : null}
-      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
-        <section className="min-w-0 rounded-lg border border-white/10 bg-white/[.02] p-4">
-          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Customer</h3>
-          <p className="mt-2 text-sm font-semibold text-white/85">{customer?.full_name || "Unknown rider"}</p>
-          <p className="mt-1 break-all text-xs text-white/50">{customer?.email || order.user_id}</p>
-        </section>
-        <section className="min-w-0 rounded-lg border border-white/10 bg-white/[.02] p-4">
-          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Delivery address</h3>
-          {order.shipping_address ? (
-            <>
-              <p className="mt-2 text-sm font-semibold text-white/85">{order.shipping_address.recipient_name}</p>
-              <p className="mt-1 text-xs leading-5 text-white/55">{formatDeliveryAddress(order.shipping_address)}</p>
-              <p className="mt-1 text-xs text-white/40">{order.shipping_address.phone}</p>
-            </>
-          ) : (
-            <p className="mt-2 text-xs text-white/45">No address provided</p>
-          )}
-        </section>
-      </div>
-
-      <section className="mx-4 mb-4 rounded-lg border border-white/10 sm:mx-5">
-        <div className="border-b border-white/10 px-4 py-3">
-          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">Items in this order</h3>
-        </div>
-        <div className="divide-y divide-white/[.06] px-4">
-          {order.order_items.map(item => (
-            <div key={item.id} className="flex items-center justify-between gap-4 py-3 text-sm">
-              <div className="min-w-0 text-white/70">
-                <span className="mr-2 text-xs font-bold text-white/40">{item.quantity}×</span>
-                <span className="font-medium text-white/85">{item.product_name}</span>
-                <span className="text-white/40"> / {item.finish}</span>
-              </div>
-              <span className="shrink-0 font-semibold tabular-nums text-white">
-                {formatMoney(
-                  item.line_total_cents / 100,
-                  order.display_currency,
-                  order.fx_rate
-                )}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-white/10 bg-white/[.02] px-4 py-3">
-          <div className="ml-auto grid max-w-xs grid-cols-2 gap-x-8 gap-y-2 text-xs">
-            <span className="text-white/45">Subtotal</span>
-            <span className="text-right tabular-nums text-white/70">
-              {formatMoney(
-                order.subtotal_cents / 100,
-                order.display_currency,
-                order.fx_rate
+          <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+            <section className="min-w-0 rounded-lg border border-white/10 bg-white/[.02] p-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">
+                Customer
+              </h3>
+              <p className="mt-2 text-sm font-semibold text-white/85">
+                {customer?.full_name || "Unknown rider"}
+              </p>
+              <p className="mt-1 break-all text-xs text-white/50">
+                {customer?.email || order.user_id}
+              </p>
+            </section>
+            <section className="min-w-0 rounded-lg border border-white/10 bg-white/[.02] p-4">
+              <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">
+                Delivery address
+              </h3>
+              {order.shipping_address ? (
+                <>
+                  <p className="mt-2 text-sm font-semibold text-white/85">
+                    {order.shipping_address.recipient_name}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-white/55">
+                    {formatDeliveryAddress(order.shipping_address)}
+                  </p>
+                  <p className="mt-1 text-xs text-white/40">
+                    {order.shipping_address.phone}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-xs text-white/45">
+                  No address provided
+                </p>
               )}
-            </span>
-            <span className="text-white/45">Shipping</span>
-            <span className="text-right tabular-nums text-white/70">
-              {order.shipping_cents === 0
-                ? "Included"
-                : formatMoney(
-                    order.shipping_cents / 100,
+            </section>
+          </div>
+
+          <section className="mx-4 mb-4 rounded-lg border border-white/10 sm:mx-5">
+            <div className="border-b border-white/10 px-4 py-3">
+              <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/40">
+                Items in this order
+              </h3>
+            </div>
+            <div className="divide-y divide-white/[.06] px-4">
+              {order.order_items.map(item => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-4 py-3 text-sm"
+                >
+                  <div className="min-w-0 text-white/70">
+                    <span className="mr-2 text-xs font-bold text-white/40">
+                      {item.quantity}×
+                    </span>
+                    <span className="font-medium text-white/85">
+                      {item.product_name}
+                    </span>
+                    <span className="text-white/40"> / {item.finish}</span>
+                  </div>
+                  <span className="shrink-0 font-semibold tabular-nums text-white">
+                    {formatMoney(
+                      item.line_total_cents / 100,
+                      order.display_currency,
+                      order.fx_rate
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-white/10 bg-white/[.02] px-4 py-3">
+              <div className="ml-auto grid max-w-xs grid-cols-2 gap-x-8 gap-y-2 text-xs">
+                <span className="text-white/45">Subtotal</span>
+                <span className="text-right tabular-nums text-white/70">
+                  {formatMoney(
+                    order.subtotal_cents / 100,
                     order.display_currency,
                     order.fx_rate
                   )}
-            </span>
-            <span className="border-t border-white/10 pt-2 font-bold text-white/75">Total</span>
-            <span className="border-t border-white/10 pt-2 text-right font-bold tabular-nums text-white">
-              {formatMoney(
-                order.total_cents / 100,
-                order.display_currency,
-                order.fx_rate
-              )}
-            </span>
-          </div>
-        </div>
-      </section>
+                </span>
+                <span className="text-white/45">Shipping</span>
+                <span className="text-right tabular-nums text-white/70">
+                  {order.shipping_cents === 0
+                    ? "Included"
+                    : formatMoney(
+                        order.shipping_cents / 100,
+                        order.display_currency,
+                        order.fx_rate
+                      )}
+                </span>
+                <span className="border-t border-white/10 pt-2 font-bold text-white/75">
+                  Total
+                </span>
+                <span className="border-t border-white/10 pt-2 text-right font-bold tabular-nums text-white">
+                  {formatMoney(
+                    order.total_cents / 100,
+                    order.display_currency,
+                    order.fx_rate
+                  )}
+                </span>
+              </div>
+            </div>
+          </section>
 
-      <section className="mx-4 mb-4 rounded-lg border border-white/10 bg-white/[.02] p-4 sm:mx-5 sm:p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/45">Customer order progress</h3>
-          <span className="text-[10px] text-white/30">Visible to the customer</span>
-        </div>
-        <OrderTimeline className="mt-4" timeline={timeline} />
-      </section>
+          <section className="mx-4 mb-4 rounded-lg border border-white/10 bg-white/[.02] p-4 sm:mx-5 sm:p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/45">
+                Customer order progress
+              </h3>
+              <span className="text-[10px] text-white/30">
+                Visible to the customer
+              </span>
+            </div>
+            <OrderTimeline className="mt-4" timeline={timeline} />
+          </section>
 
-      <section className="border-t border-white/10 bg-black/10 p-4 sm:p-5">
-        <div className="mb-3">
-          <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/45">Update fulfillment</h3>
-          <p className="mt-1 text-xs text-white/35">Change the order status or save a tracking number.</p>
+          <section className="border-t border-white/10 bg-black/10 p-4 sm:p-5">
+            <div className="mb-3">
+              <h3 className="text-[10px] font-black uppercase tracking-[.14em] text-white/45">
+                Update fulfillment
+              </h3>
+              <p className="mt-1 text-xs text-white/35">
+                Change the order status or save a tracking number.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+              <label className={labelClass}>
+                Status
+                <select
+                  value={status}
+                  onChange={event =>
+                    setStatus(event.target.value as AdminOrderStatus)
+                  }
+                  disabled={available.length === 0}
+                  className={`${inputClass} disabled:opacity-50`}
+                >
+                  {statusOptions.map(item => (
+                    <option key={item} value={item} className="bg-[#111214]">
+                      {item === "shipped"
+                        ? "Shipped — handed to courier"
+                        : orderStatusLabels[item]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={labelClass}>
+                Tracking number
+                <input
+                  value={trackingNumber}
+                  onChange={event => setTrackingNumber(event.target.value)}
+                  className={inputClass}
+                  placeholder="Optional"
+                />
+              </label>
+              <button
+                onClick={save}
+                disabled={saving}
+                className="inline-flex h-11 items-center justify-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black transition hover:bg-[#ff704f] disabled:opacity-50 sm:min-w-40"
+              >
+                {saving ? (
+                  "Saving..."
+                ) : (
+                  <>
+                    <Save size={14} />
+                    {status === order.status
+                      ? "Save details"
+                      : `Mark ${orderStatusLabels[status].toLowerCase()}`}
+                  </>
+                )}
+              </button>
+              <p className="text-[10px] leading-4 text-white/35 sm:col-span-3">
+                {available.length === 0
+                  ? "This order is closed. You can still record its tracking number."
+                  : status === "shipped" && order.status !== "shipped"
+                    ? "Mark as shipped once the parcel has left the workshop. The customer timeline will update with the ship-out time."
+                    : "Leave the status unchanged to save the tracking number only."}
+              </p>
+            </div>
+          </section>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-          <label className={labelClass}>
-            Status
-            <select
-              value={status}
-              onChange={event =>
-                setStatus(event.target.value as AdminOrderStatus)
-              }
-              disabled={available.length === 0}
-              className={`${inputClass} disabled:opacity-50`}
-            >
-              {statusOptions.map(item => (
-                <option key={item} value={item} className="bg-[#111214]">
-                  {item === "shipped"
-                    ? "Shipped — handed to courier"
-                    : orderStatusLabels[item]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={labelClass}>
-            Tracking number
-            <input
-              value={trackingNumber}
-              onChange={event => setTrackingNumber(event.target.value)}
-              className={inputClass}
-              placeholder="Optional"
-            />
-          </label>
-          <button
-            onClick={save}
-            disabled={saving}
-            className="inline-flex h-11 items-center justify-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black transition hover:bg-[#ff704f] disabled:opacity-50 sm:min-w-40"
-          >
-            {saving ? (
-              "Saving..."
-            ) : (
-              <>
-                <Save size={14} />
-                {status === order.status
-                  ? "Save details"
-                  : `Mark ${orderStatusLabels[status].toLowerCase()}`}
-              </>
-            )}
-          </button>
-          <p className="text-[10px] leading-4 text-white/35 sm:col-span-3">
-            {available.length === 0
-              ? "This order is closed. You can still record its tracking number."
-              : status === "shipped" && order.status !== "shipped"
-                ? "Mark as shipped once the parcel has left the workshop. The customer timeline will update with the ship-out time."
-                : "Leave the status unchanged to save the tracking number only."}
-          </p>
-        </div>
-      </section>
-      </div>
       ) : null}
     </article>
   );
@@ -469,6 +541,8 @@ function newProduct(categories: CatalogCategory[]): Product {
     name: "",
     category: categories[0]?.name ?? "",
     price: 0,
+    stockQuantity: 0,
+    reservedQuantity: 0,
     descriptor: "",
     description: "",
     finishes: ["Graphite"],
@@ -482,9 +556,13 @@ function newProduct(categories: CatalogCategory[]): Product {
 }
 
 function withProductWeight(specs: Product["specs"], weight: string) {
-  const otherSpecs = specs.filter(item => item.label.toLowerCase() !== "weight");
+  const otherSpecs = specs.filter(
+    item => item.label.toLowerCase() !== "weight"
+  );
   const cleanWeight = weight.trim();
-  return cleanWeight ? [...otherSpecs, { label: "Weight", value: cleanWeight }] : otherSpecs;
+  return cleanWeight
+    ? [...otherSpecs, { label: "Weight", value: cleanWeight }]
+    : otherSpecs;
 }
 
 /** The lead photo stays in image and every extra photo stays in gallery order, with no duplicates. */
@@ -549,7 +627,11 @@ function ProductEditor({
     )
   );
   const [weight, setWeight] = useState(
-    product.specs.find(item => item.label.toLowerCase() === "weight")?.value ?? ""
+    product.specs.find(item => item.label.toLowerCase() === "weight")?.value ??
+      ""
+  );
+  const [shippingWeight, setShippingWeight] = useState(
+    product.shippingWeightKg?.toString() ?? ""
   );
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -627,8 +709,10 @@ function ProductEditor({
       )
     );
     setWeight(
-      product.specs.find(item => item.label.toLowerCase() === "weight")?.value ?? ""
+      product.specs.find(item => item.label.toLowerCase() === "weight")
+        ?.value ?? ""
     );
+    setShippingWeight(product.shippingWeightKg?.toString() ?? "");
   }, [product]);
 
   const save = async () => {
@@ -673,6 +757,26 @@ function ProductEditor({
       });
       return;
     }
+    if (!weight.trim()) {
+      toast.error("Item weight required.", {
+        description:
+          "Enter the product weight customers will see, including its unit.",
+      });
+      return;
+    }
+    const packedWeightInput = Number(shippingWeight);
+    const packedWeight = Math.round(packedWeightInput * 1000) / 1000;
+    if (
+      !shippingWeight.trim() ||
+      !Number.isFinite(packedWeightInput) ||
+      packedWeight <= 0
+    ) {
+      toast.error("Packed shipping weight required.", {
+        description:
+          "Enter this item’s packed weight in kilograms so checkout can calculate international delivery.",
+      });
+      return;
+    }
 
     setSaving(true);
     try {
@@ -680,6 +784,7 @@ function ProductEditor({
         ...draft,
         slug,
         finishes: cleanFinishes,
+        shippingWeightKg: packedWeight,
         specs: withProductWeight(draft.specs, weight),
       });
       toast.success("Shop item saved.");
@@ -720,7 +825,8 @@ function ProductEditor({
 
   // Framing: pick a photo, then drag it inside the frame to set the crop.
   const [framing, setFraming] = useState<string | null>(null);
-  const framingPhoto = framing && gallery.includes(framing) ? framing : gallery[0];
+  const framingPhoto =
+    framing && gallery.includes(framing) ? framing : gallery[0];
   const [dragStart, setDragStart] = useState<{
     x: number;
     y: number;
@@ -778,9 +884,13 @@ function ProductEditor({
     ? cardImageDimensions.width / cardImageDimensions.height
     : null;
   const cardImageWidthScale =
-    cardPhotoRatio === null ? 1 : Math.max(1, cardPhotoRatio / (4 / 5)) * cardZoom;
+    cardPhotoRatio === null
+      ? 1
+      : Math.max(1, cardPhotoRatio / (4 / 5)) * cardZoom;
   const cardImageHeightScale =
-    cardPhotoRatio === null ? 1 : Math.max(1, (4 / 5) / cardPhotoRatio) * cardZoom;
+    cardPhotoRatio === null
+      ? 1
+      : Math.max(1, 4 / 5 / cardPhotoRatio) * cardZoom;
   const canAdjustCardCropX = cardImageWidthScale > 1;
   const canAdjustCardCropY = cardImageHeightScale > 1;
 
@@ -815,12 +925,22 @@ function ProductEditor({
     if (!photo) return;
     const dx = event.clientX - dragStart.x;
     const dy = event.clientY - dragStart.y;
-    const nextX = Math.max(0, Math.min(100,
-      dragStart.posX - (dragStart.overflowX > 0 ? (dx * 100) / dragStart.overflowX : 0)
-    ));
-    const nextY = Math.max(0, Math.min(100,
-      dragStart.posY - (dragStart.overflowY > 0 ? (dy * 100) / dragStart.overflowY : 0)
-    ));
+    const nextX = Math.max(
+      0,
+      Math.min(
+        100,
+        dragStart.posX -
+          (dragStart.overflowX > 0 ? (dx * 100) / dragStart.overflowX : 0)
+      )
+    );
+    const nextY = Math.max(
+      0,
+      Math.min(
+        100,
+        dragStart.posY -
+          (dragStart.overflowY > 0 ? (dy * 100) / dragStart.overflowY : 0)
+      )
+    );
     setDraft(cur => ({
       ...cur,
       image_positions: {
@@ -837,14 +957,20 @@ function ProductEditor({
     event.preventDefault();
     const bounds = event.currentTarget.getBoundingClientRect();
     const imageRatio = cardImageDimensions.width / cardImageDimensions.height;
-    const [posX, posY] = productImagePositionCoordinates(draft.card_image_position);
+    const [posX, posY] = productImagePositionCoordinates(
+      draft.card_image_position
+    );
     setCardCropDrag({
       x: event.clientX,
       y: event.clientY,
       posX,
       posY,
-      overflowX: Math.max(bounds.width, bounds.height * imageRatio) * cardZoom - bounds.width,
-      overflowY: Math.max(bounds.height, bounds.width / imageRatio) * cardZoom - bounds.height,
+      overflowX:
+        Math.max(bounds.width, bounds.height * imageRatio) * cardZoom -
+        bounds.width,
+      overflowY:
+        Math.max(bounds.height, bounds.width / imageRatio) * cardZoom -
+        bounds.height,
     });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -852,22 +978,48 @@ function ProductEditor({
     if (!cardCropDrag) return;
     const dx = event.clientX - cardCropDrag.x;
     const dy = event.clientY - cardCropDrag.y;
-    const nextX = Math.max(0, Math.min(100, cardCropDrag.posX - (cardCropDrag.overflowX > 0 ? dx * 100 / cardCropDrag.overflowX : 0)));
-    const nextY = Math.max(0, Math.min(100, cardCropDrag.posY - (cardCropDrag.overflowY > 0 ? dy * 100 / cardCropDrag.overflowY : 0)));
-    setDraft(current => ({ ...current, card_image_position: formatProductImagePosition(nextX, nextY) }));
+    const nextX = Math.max(
+      0,
+      Math.min(
+        100,
+        cardCropDrag.posX -
+          (cardCropDrag.overflowX > 0 ? (dx * 100) / cardCropDrag.overflowX : 0)
+      )
+    );
+    const nextY = Math.max(
+      0,
+      Math.min(
+        100,
+        cardCropDrag.posY -
+          (cardCropDrag.overflowY > 0 ? (dy * 100) / cardCropDrag.overflowY : 0)
+      )
+    );
+    setDraft(current => ({
+      ...current,
+      card_image_position: formatProductImagePosition(nextX, nextY),
+    }));
   };
   const handleCardCropEnd = (event: React.PointerEvent<HTMLDivElement>) => {
     setCardCropDrag(null);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const updateCardCropPosition = (axis: "x" | "y", value: number) => {
     const [x, y] = productImagePositionCoordinates(draft.card_image_position);
     setDraft(current => ({
       ...current,
-      card_image_position: formatProductImagePosition(axis === "x" ? value : x, axis === "y" ? value : y),
+      card_image_position: formatProductImagePosition(
+        axis === "x" ? value : x,
+        axis === "y" ? value : y
+      ),
     }));
   };
-  const resetCardCropPosition = () => setDraft(current => ({ ...current, card_image_position: undefined, card_image_zoom: 1 }));
+  const resetCardCropPosition = () =>
+    setDraft(current => ({
+      ...current,
+      card_image_position: undefined,
+      card_image_zoom: 1,
+    }));
   const updateCropPosition = (axis: "x" | "y", value: number) => {
     if (!framingPhoto) return;
     const [x, y] = productImagePositionCoordinates(
@@ -954,11 +1106,17 @@ function ProductEditor({
       <div className="grid gap-6 p-5 2xl:grid-cols-[minmax(0,1.1fr)_minmax(400px,.9fr)]">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div role="group" aria-label="Preview content" className="flex items-center gap-1 rounded-md border border-white/10 bg-[#0d0e10] p-1">
-              {([
-                { id: "page", label: "Item page" },
-                { id: "card", label: "Shop card" },
-              ] as const).map(item => (
+            <div
+              role="group"
+              aria-label="Preview content"
+              className="flex items-center gap-1 rounded-md border border-white/10 bg-[#0d0e10] p-1"
+            >
+              {(
+                [
+                  { id: "page", label: "Item page" },
+                  { id: "card", label: "Shop card" },
+                ] as const
+              ).map(item => (
                 <button
                   type="button"
                   key={item.id}
@@ -971,16 +1129,16 @@ function ProductEditor({
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-            {previewDevices.map(item => (
-              <button
-                type="button"
-                key={item.id}
-                onClick={() => setDevice(item)}
-                className={`border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[.12em] transition ${device.id === item.id ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/50 hover:border-white/50 hover:text-white"}`}
-              >
-                {item.label}
-              </button>
-            ))}
+              {previewDevices.map(item => (
+                <button
+                  type="button"
+                  key={item.id}
+                  onClick={() => setDevice(item)}
+                  className={`border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[.12em] transition ${device.id === item.id ? "border-[#ff5a36] bg-[#ff5a36] text-black" : "border-white/15 text-white/50 hover:border-white/50 hover:text-white"}`}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
           </div>
           <PreviewStage
@@ -1084,13 +1242,15 @@ function ProductEditor({
           <section className="border border-white/10 bg-[#0d0e10] p-4">
             <div className="mb-4">
               <h3 className="text-sm font-bold text-white">
-                Options and weight
+                Options and shipping weights
               </h3>
               <p className="mt-1 text-xs text-white/45">
-                Set the choices and weight shown on the item page.
+                Add the product weight shown to customers and the packed weight
+                used for checkout quotes. Include packaging in the packed
+                weight.
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               <label className={labelClass}>
                 Finishes{" "}
                 <span className="font-normal text-white/40">
@@ -1113,14 +1273,34 @@ function ProductEditor({
                 />
               </label>
               <label className={labelClass}>
-                Weight{" "}
-                <span className="font-normal text-white/40">Optional</span>
+                Item weight{" "}
+                <span className="font-normal text-[#ff5a36]">Required</span>
                 <input
+                  data-editor-field="weight"
+                  required
                   value={weight}
                   onChange={event => setWeight(event.target.value)}
                   className={inputClass}
                   placeholder="e.g. 118 g / pair"
                 />
+              </label>
+              <label className={labelClass}>
+                Packed shipping weight (kg){" "}
+                <span className="font-normal text-[#ff5a36]">Required</span>
+                <input
+                  required
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                  value={shippingWeight}
+                  onChange={event => setShippingWeight(event.target.value)}
+                  className={inputClass}
+                  placeholder="e.g. 0.42"
+                />
+                <span className="text-[10px] font-normal leading-4 text-white/35">
+                  Weigh the item with retail packaging. This is the billable
+                  weight multiplied by quantity for international rates.
+                </span>
               </label>
             </div>
           </section>
@@ -1442,7 +1622,8 @@ function ProductEditor({
               <div className="mb-4">
                 <h3 className="text-sm font-bold text-white">Shop card crop</h3>
                 <p className="mt-1 text-xs text-white/45">
-                  Adjust the lead photo for product cards. This crop is separate from the item gallery.
+                  Adjust the lead photo for product cards. This crop is separate
+                  from the item gallery.
                 </p>
               </div>
               <div
@@ -1460,8 +1641,15 @@ function ProductEditor({
                     draggable={false}
                     onLoad={event => {
                       const image = event.currentTarget;
-                      if (image.getAttribute("src") === gallery[0] && image.naturalWidth > 0 && image.naturalHeight > 0) {
-                        setCardImageDimensions({ width: image.naturalWidth, height: image.naturalHeight });
+                      if (
+                        image.getAttribute("src") === gallery[0] &&
+                        image.naturalWidth > 0 &&
+                        image.naturalHeight > 0
+                      ) {
+                        setCardImageDimensions({
+                          width: image.naturalWidth,
+                          height: image.naturalHeight,
+                        });
                       }
                     }}
                     className="pointer-events-none absolute max-h-none max-w-none select-none"
@@ -1490,11 +1678,15 @@ function ProductEditor({
                       max="3"
                       step="0.01"
                       value={cardZoom}
-                      onChange={event => update("card_image_zoom", Number(event.target.value))}
+                      onChange={event =>
+                        update("card_image_zoom", Number(event.target.value))
+                      }
                       aria-label="Shop card photo zoom"
                       className="h-1.5 w-full cursor-pointer accent-[#ff5a36]"
                     />
-                    <span className="text-right tabular-nums text-white/75">{Math.round((cardZoom - 1) * 100)}%</span>
+                    <span className="text-right tabular-nums text-white/75">
+                      {Math.round((cardZoom - 1) * 100)}%
+                    </span>
                   </label>
                   <label className="grid grid-cols-[auto_minmax(0,1fr)_2.5rem] items-center gap-3 text-[10px] font-bold uppercase tracking-[.12em] text-white/55">
                     <span>Horizontal</span>
@@ -1504,12 +1696,16 @@ function ProductEditor({
                       max="100"
                       step="0.1"
                       value={cardCropX}
-                      onChange={event => updateCardCropPosition("x", Number(event.target.value))}
+                      onChange={event =>
+                        updateCardCropPosition("x", Number(event.target.value))
+                      }
                       disabled={!canAdjustCardCropX}
                       aria-label="Shop card horizontal photo position"
                       className="h-1.5 w-full cursor-pointer accent-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-30"
                     />
-                    <span className="text-right tabular-nums text-white/75">{Math.round(cardCropX)}%</span>
+                    <span className="text-right tabular-nums text-white/75">
+                      {Math.round(cardCropX)}%
+                    </span>
                   </label>
                   <label className="grid grid-cols-[auto_minmax(0,1fr)_2.5rem] items-center gap-3 text-[10px] font-bold uppercase tracking-[.12em] text-white/55">
                     <span>Vertical</span>
@@ -1519,15 +1715,21 @@ function ProductEditor({
                       max="100"
                       step="0.1"
                       value={cardCropY}
-                      onChange={event => updateCardCropPosition("y", Number(event.target.value))}
+                      onChange={event =>
+                        updateCardCropPosition("y", Number(event.target.value))
+                      }
                       disabled={!canAdjustCardCropY}
                       aria-label="Shop card vertical photo position"
                       className="h-1.5 w-full cursor-pointer accent-[#ff5a36] disabled:cursor-not-allowed disabled:opacity-30"
                     />
-                    <span className="text-right tabular-nums text-white/75">{Math.round(cardCropY)}%</span>
+                    <span className="text-right tabular-nums text-white/75">
+                      {Math.round(cardCropY)}%
+                    </span>
                   </label>
                   <div className="flex items-center justify-between gap-3 sm:col-span-2">
-                    <p className="text-xs text-white/40">Drag the image or fine-tune its crop with the sliders.</p>
+                    <p className="text-xs text-white/40">
+                      Drag the image or fine-tune its crop with the sliders.
+                    </p>
                     <button
                       type="button"
                       onClick={resetCardCropPosition}
@@ -1547,7 +1749,9 @@ function ProductEditor({
 
           <section className="border border-white/10 bg-[#0d0e10] p-4">
             <h3 className="text-sm font-bold text-white">Homepage placement</h3>
-            <p className="mt-1 text-xs text-white/45">Choose whether this item is featured on the homepage.</p>
+            <p className="mt-1 text-xs text-white/45">
+              Choose whether this item is featured on the homepage.
+            </p>
             <div className="mt-4">
               <label className="flex items-center gap-2 text-xs text-white/65">
                 <input
@@ -1797,6 +2001,180 @@ function ProductManager({
   );
 }
 
+function InventoryManager({
+  products,
+  reload,
+  notify,
+}: {
+  products: Product[];
+  reload: () => Promise<void>;
+  notify: () => Promise<void>;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    setDrafts(current => {
+      const next = { ...current };
+      for (const product of products) {
+        if (!(product.id in next))
+          next[product.id] = String(product.stockQuantity);
+      }
+      return next;
+    });
+  }, [products]);
+
+  const saveStock = async (product: Product) => {
+    const raw = drafts[product.id] ?? "";
+    const quantity = Number(raw);
+    if (
+      !/^\d+$/.test(raw) ||
+      !Number.isSafeInteger(quantity) ||
+      quantity > 2147483647
+    ) {
+      toast.error("Enter a whole stock quantity.");
+      return;
+    }
+    if (quantity < product.reservedQuantity) {
+      toast.error("Stock cannot be lower than reserved units.", {
+        description: `${product.reservedQuantity} unit(s) are currently held for open orders.`,
+      });
+      return;
+    }
+
+    setSavingId(product.id);
+    try {
+      await saveAdminProductStock(product.id, quantity);
+      toast.success(`${product.name} stock updated.`);
+      await reload();
+      await notify();
+    } catch (error) {
+      toast.error("Could not update stock.", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const visibleProducts = products.filter(product =>
+    `${product.name} ${product.category}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">
+          Fulfilment
+        </p>
+        <h1 className="mt-1 font-display text-5xl uppercase text-white">
+          Inventory
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">
+          Set the physical units on hand for each item. Orders reserve units at
+          checkout; on-hand stock is reduced when an order is marked shipped.
+          Cancelled or rejected orders release their reservation.
+        </p>
+      </header>
+
+      <label className="relative block max-w-xl">
+        <span className="sr-only">Search inventory</span>
+        <Search
+          size={17}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          placeholder="Search items"
+          className={`${inputClass} pl-10`}
+        />
+      </label>
+
+      <div className="overflow-hidden border border-white/15">
+        <div className="hidden grid-cols-[minmax(0,1fr)_150px_120px_120px_130px] gap-4 border-b border-white/10 bg-white/[.03] px-5 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/40 lg:grid">
+          <span>Shop item</span>
+          <span>On hand</span>
+          <span>Reserved</span>
+          <span>Available</span>
+          <span />
+        </div>
+        {visibleProducts.map(product => {
+          const quantity = Number(drafts[product.id] ?? product.stockQuantity);
+          const available = Math.max(
+            0,
+            (Number.isFinite(quantity) ? quantity : 0) -
+              product.reservedQuantity
+          );
+          return (
+            <article
+              key={product.id}
+              className="grid gap-3 border-b border-white/10 p-4 last:border-b-0 sm:p-5 lg:grid-cols-[minmax(0,1fr)_150px_120px_120px_130px] lg:items-center lg:gap-4"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-bold text-white">{product.name}</p>
+                <p className="mt-1 text-xs text-white/40">
+                  {product.category}
+                  {product.archived ? " · Archived" : ""}
+                </p>
+              </div>
+              <label className="grid gap-2 text-xs font-semibold text-white/40">
+                <span className="lg:sr-only">On hand</span>
+                <input
+                  type="number"
+                  min={product.reservedQuantity}
+                  max={2147483647}
+                  step="1"
+                  inputMode="numeric"
+                  aria-label={`${product.name} units on hand`}
+                  value={drafts[product.id] ?? product.stockQuantity}
+                  onChange={event =>
+                    setDrafts(current => ({
+                      ...current,
+                      [product.id]: event.target.value,
+                    }))
+                  }
+                  className={inputClass}
+                />
+              </label>
+              <div className="flex items-center justify-between text-sm lg:block">
+                <span className="text-white/40 lg:hidden">Reserved</span>
+                <span className="font-semibold tabular-nums text-white/75">
+                  {product.reservedQuantity}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm lg:block">
+                <span className="text-white/40 lg:hidden">Available</span>
+                <span
+                  className={`font-bold tabular-nums ${available ? "text-emerald-300" : "text-[#ff5a36]"}`}
+                >
+                  {available}
+                </span>
+              </div>
+              <button
+                onClick={() => void saveStock(product)}
+                disabled={savingId === product.id}
+                className="h-11 border border-white/20 px-4 text-[10px] font-black uppercase tracking-[.14em] text-white transition hover:border-[#ff5a36] hover:text-[#ff5a36] disabled:opacity-40"
+              >
+                {savingId === product.id ? "Saving…" : "Save stock"}
+              </button>
+            </article>
+          );
+        })}
+        {visibleProducts.length === 0 && (
+          <p className="p-8 text-center text-sm text-white/45">
+            {products.length ? "No items match this search." : "No shop items yet."}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function categoryIdFromName(name: string) {
   const base =
     name
@@ -1827,8 +2205,7 @@ function CategoryRow({
 
   useEffect(() => setDraft(category), [category]);
 
-  const update = (name: string) =>
-    setDraft(current => ({ ...current, name }));
+  const update = (name: string) => setDraft(current => ({ ...current, name }));
 
   const save = async () => {
     if (!draft.name.trim()) {
@@ -2059,8 +2436,8 @@ function CategoryManager({
         <div className="mb-4">
           <h2 className="text-sm font-bold text-white">Add a category</h2>
           <p className="mt-1 text-xs text-white/45">
-            New categories appear in the storefront navigation and the shop
-            item editor.
+            New categories appear in the storefront navigation and the shop item
+            editor.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -2588,6 +2965,7 @@ function RoleManager({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<AccountRole>("staff");
   const [saving, setSaving] = useState(false);
+  const teamProfiles = profiles.filter(profile => profile.role !== "customer");
   const save = async () => {
     setSaving(true);
     try {
@@ -2613,8 +2991,9 @@ function RoleManager({
           Manage access
         </h1>
         <p className="mt-3 max-w-lg text-sm leading-6 text-white/45">
-          Enter the email address of an existing account to change its access.
-          The last administrator cannot be removed.
+          Manage staff and administrator accounts here. Enter an existing
+          account email to update its team access. The last administrator
+          cannot be removed.
         </p>
       </div>
       <div className="grid gap-3 border border-white/15 bg-[#111214] p-5 sm:grid-cols-[1fr_180px_auto] sm:items-end">
@@ -2635,13 +3014,9 @@ function RoleManager({
             onChange={event => setRole(event.target.value as AccountRole)}
             className={inputClass}
           >
-            {(["customer", "staff", "admin"] as AccountRole[]).map(value => (
+            {(["staff", "admin"] as AccountRole[]).map(value => (
               <option key={value} value={value} className="bg-[#111214]">
-                {value === "admin"
-                  ? "Administrator"
-                  : value === "staff"
-                    ? "Staff"
-                    : "Customer"}
+                {value === "admin" ? "Administrator" : "Staff"}
               </option>
             ))}
           </select>
@@ -2655,7 +3030,7 @@ function RoleManager({
         </button>
       </div>
       <div className="divide-y divide-white/10 border-y border-white/10">
-        {profiles.map(profile => (
+        {teamProfiles.map(profile => (
           <div
             key={profile.id}
             className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between"
@@ -2673,7 +3048,315 @@ function RoleManager({
             </span>
           </div>
         ))}
+        {teamProfiles.length === 0 && (
+          <p className="py-6 text-sm text-white/45">
+            No staff or administrator accounts yet.
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+function ShippingRatesManager({ products }: { products: Product[] }) {
+  const [rates, setRates] = useState<ShippingRate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingCode, setSavingCode] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [draft, setDraft] = useState({
+    country_code: "",
+    country_name: "",
+    first_kg: "",
+    per_500g: "",
+    max_weight_kg: "30",
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setRates(await fetchShippingRates());
+    } catch (error) {
+      toast.error("Could not load shipping rates.", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const updateRate = (code: string, patch: Partial<ShippingRate>) =>
+    setRates(current =>
+      current.map(rate =>
+        rate.country_code === code ? { ...rate, ...patch } : rate
+      )
+    );
+  const save = async (rate: ShippingRate) => {
+    if (
+      !rate.country_name.trim() ||
+      !Number.isFinite(rate.first_kg_cents) ||
+      rate.first_kg_cents < 0 ||
+      !Number.isFinite(rate.per_500g_cents) ||
+      rate.per_500g_cents < 0 ||
+      !Number.isFinite(rate.max_weight_kg) ||
+      rate.max_weight_kg <= 0
+    ) {
+      toast.error("Check the rate details.", {
+        description:
+          "Prices must be zero or above, and the destination weight limit must be above zero.",
+      });
+      return false;
+    }
+    setSavingCode(rate.country_code);
+    try {
+      await saveShippingRate(rate);
+      toast.success(`${rate.country_name} rate saved.`);
+      await load();
+      return true;
+    } catch (error) {
+      toast.error("Could not save this rate.", {
+        description: error instanceof Error ? error.message : "Try again.",
+      });
+      return false;
+    } finally {
+      setSavingCode(null);
+    }
+  };
+  const addRate = async () => {
+    const country_code = draft.country_code.trim().toUpperCase();
+    const first = Number(draft.first_kg),
+      step = Number(draft.per_500g),
+      max = Number(draft.max_weight_kg);
+    if (
+      !/^[A-Z]{2}$/.test(country_code) ||
+      !draft.country_name.trim() ||
+      !Number.isFinite(first) ||
+      first < 0 ||
+      !Number.isFinite(step) ||
+      step < 0 ||
+      !Number.isFinite(max) ||
+      max <= 0
+    ) {
+      toast.error("Check the rate details.", {
+        description:
+          "Use a two-letter country code, country name, valid prices, and a weight limit above zero.",
+      });
+      return;
+    }
+    const rate: ShippingRate = {
+      country_code,
+      country_name: draft.country_name.trim(),
+      first_kg_cents: Math.round(first * 100),
+      per_500g_cents: Math.round(step * 100),
+      max_weight_kg: max,
+      enabled: true,
+    };
+    if (await save(rate))
+      setDraft({
+        country_code: "",
+        country_name: "",
+        first_kg: "",
+        per_500g: "",
+        max_weight_kg: "30",
+      });
+  };
+  const visible = rates.filter(rate =>
+    `${rate.country_name} ${rate.country_code}`
+      .toLowerCase()
+      .includes(query.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">
+          Fulfilment setup
+        </p>
+        <h1 className="mt-1 font-display text-5xl uppercase text-white">
+          Shipping rates
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">
+          Manage International Express Mail merchandise rates by destination.
+          The first rate covers up to 1 kg; each additional 500 g or part
+          thereof adds the next rate. Prices are entered in PHP.
+        </p>
+      </header>
+
+      <div className="border border-amber-300/25 bg-amber-300/[.06] p-4 text-sm leading-6 text-amber-100/80">
+        <p className="font-bold text-amber-100">
+          Manage the international destinations you serve
+        </p>
+        <p className="mt-1 text-xs text-amber-100/60">
+          Active destinations appear in checkout. Each cart item needs a packed
+          shipping weight and must remain under that destination’s limit.
+          Existing orders keep the shipping amount saved when they were placed.
+        </p>
+        {products.filter(
+          product => !product.shippingWeightKg || product.shippingWeightKg <= 0
+        ).length > 0 ? (
+          <p className="mt-2 border-t border-amber-100/10 pt-2 text-xs text-amber-100">
+            {
+              products.filter(
+                product =>
+                  !product.shippingWeightKg || product.shippingWeightKg <= 0
+              ).length
+            }{" "}
+            shop item(s) still need a packed weight. Add it under Shop items
+            before enabling international checkout.
+          </p>
+        ) : null}
+      </div>
+
+      <section className="border border-white/10 bg-[#111214] p-4 sm:p-5">
+        <h2 className="text-sm font-bold text-white">Add a destination</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {(
+            [
+              ["country_code", "ISO country code", "US"],
+              ["country_name", "Country", "United States"],
+              ["first_kg", "Up to 1 kg (PHP)", "3043"],
+              ["per_500g", "Each extra 500 g (PHP)", "512"],
+              ["max_weight_kg", "Weight limit (kg)", "30"],
+            ] as const
+          ).map(([key, label, placeholder]) => (
+            <label key={key} className={labelClass}>
+              <span>{label}</span>
+              <input
+                value={draft[key]}
+                onChange={event =>
+                  setDraft(current => ({
+                    ...current,
+                    [key]: event.target.value,
+                  }))
+                }
+                placeholder={placeholder}
+                inputMode={
+                  key === "country_code" || key === "country_name"
+                    ? "text"
+                    : "decimal"
+                }
+                className={inputClass}
+              />
+            </label>
+          ))}
+        </div>
+        <button
+          onClick={() => void addRate()}
+          className="mt-4 inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-4 text-[10px] font-black uppercase tracking-[.14em] text-black"
+        >
+          <Plus size={14} />
+          Add rate
+        </button>
+      </section>
+
+      <section className="border-y border-white/10">
+        <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Destination table</h2>
+            <p className="mt-1 text-xs text-white/40">
+              {rates.filter(rate => rate.enabled).length} active destinations
+            </p>
+          </div>
+          <label className="relative block sm:w-72">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-white/35"
+            />
+            <input
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder="Find a country"
+              className="h-10 w-full border border-white/15 bg-[#111214] pl-9 pr-3 text-sm text-white outline-none focus:border-[#ff5a36]"
+            />
+          </label>
+        </div>
+        {loading ? (
+          <p className="border-t border-white/10 py-8 text-sm text-white/45">
+            Loading rates…
+          </p>
+        ) : visible.length === 0 ? (
+          <p className="border-t border-white/10 py-8 text-sm text-white/45">
+            {rates.length
+              ? "No destinations match this search."
+              : "No international rates yet. Add verified rates from the carrier’s current schedule."}
+          </p>
+        ) : (
+          <div className="divide-y divide-white/10 border-t border-white/10">
+            {visible.map(rate => (
+              <article
+                key={rate.country_code}
+                className="grid gap-4 py-4 lg:grid-cols-[minmax(140px,1.2fr)_repeat(3,minmax(120px,1fr))_auto_auto] lg:items-end"
+              >
+                <div className="pb-1">
+                  <p className="font-bold text-white">{rate.country_name}</p>
+                  <p className="mt-1 text-[10px] uppercase tracking-[.14em] text-white/35">
+                    {rate.country_code}
+                  </p>
+                </div>
+                {(
+                  [
+                    ["first_kg_cents", "Up to 1 kg (PHP)"],
+                    ["per_500g_cents", "Each extra 500 g (PHP)"],
+                    ["max_weight_kg", "Weight limit (kg)"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className={labelClass}>
+                    <span>{label}</span>
+                    <input
+                      type="number"
+                      min={key === "max_weight_kg" ? "0.01" : "0"}
+                      step={key === "max_weight_kg" ? "0.1" : "0.01"}
+                      value={
+                        key === "max_weight_kg"
+                          ? rate.max_weight_kg
+                          : rate[key] / 100
+                      }
+                      onChange={event => {
+                        const value = Number(event.target.value);
+                        if (key === "max_weight_kg")
+                          updateRate(rate.country_code, {
+                            max_weight_kg: value,
+                          });
+                        else if (key === "first_kg_cents")
+                          updateRate(rate.country_code, {
+                            first_kg_cents: Math.round(value * 100),
+                          });
+                        else
+                          updateRate(rate.country_code, {
+                            per_500g_cents: Math.round(value * 100),
+                          });
+                      }}
+                      className={inputClass}
+                    />
+                  </label>
+                ))}
+                <label className="flex h-11 items-center gap-2 text-xs text-white/60">
+                  <input
+                    type="checkbox"
+                    checked={rate.enabled}
+                    onChange={event =>
+                      updateRate(rate.country_code, {
+                        enabled: event.target.checked,
+                      })
+                    }
+                    className="accent-[#ff5a36]"
+                  />
+                  Active
+                </label>
+                <button
+                  onClick={() => void save(rate)}
+                  disabled={savingCode === rate.country_code}
+                  className="h-11 border border-white/20 px-4 text-[10px] font-black uppercase tracking-[.14em] text-white transition hover:border-[#ff5a36] hover:text-[#ff5a36] disabled:opacity-40"
+                >
+                  {savingCode === rate.country_code ? "Saving…" : "Save rate"}
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -2741,7 +3424,8 @@ export default function Admin() {
       navigate("/sign-in", { replace: true });
     } catch (error) {
       toast.error("Sign-out failed.", {
-        description: error instanceof Error ? error.message : "Try again in a moment.",
+        description:
+          error instanceof Error ? error.message : "Try again in a moment.",
       });
     }
   };
@@ -2821,8 +3505,8 @@ export default function Admin() {
               Store administration
             </h1>
             <p className="mt-1 text-sm text-white/55">
-              Manage orders, shop items, categories, homepage content, and
-              staff access.
+              Manage orders, shop items, categories, homepage content, and staff
+              access.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -2943,10 +3627,22 @@ export default function Admin() {
                     Add or edit a shop item
                   </button>
                   <button
+                    onClick={() => setSection("inventory")}
+                    className="border border-white/20 px-4 py-3 text-sm font-semibold text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]"
+                  >
+                    Manage inventory
+                  </button>
+                  <button
                     onClick={() => setSection("categories")}
                     className="border border-white/20 px-4 py-3 text-sm font-semibold text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]"
                   >
                     Manage categories
+                  </button>
+                  <button
+                    onClick={() => setSection("shipping")}
+                    className="border border-white/20 px-4 py-3 text-sm font-semibold text-white/70 hover:border-[#ff5a36] hover:text-[#ff5a36]"
+                  >
+                    Edit shipping rates
                   </button>
                   <button
                     onClick={() => setSection("homepage")}
@@ -3012,6 +3708,13 @@ export default function Admin() {
               notify={refreshCatalog}
             />
           ) : null}
+          {section === "inventory" ? (
+            <InventoryManager
+              products={products}
+              reload={load}
+              notify={refreshCatalog}
+            />
+          ) : null}
           {section === "categories" ? (
             <CategoryManager
               categories={categories}
@@ -3019,6 +3722,9 @@ export default function Admin() {
               reload={load}
               notify={refreshCatalog}
             />
+          ) : null}
+          {section === "shipping" ? (
+            <ShippingRatesManager products={products} />
           ) : null}
           {section === "homepage" ? (
             <HomepageEditor

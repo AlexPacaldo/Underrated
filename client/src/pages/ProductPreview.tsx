@@ -13,6 +13,8 @@ const emptyDraft: Product = {
   name: "Untitled part",
   category: "Accessories",
   price: 0,
+  stockQuantity: 0,
+  reservedQuantity: 0,
   descriptor: "",
   description: "",
   finishes: ["Graphite"],

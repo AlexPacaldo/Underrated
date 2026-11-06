@@ -1,7 +1,7 @@
 /**
  * PayPal payment details shared by the cart and the order page.
  */
-import { ExternalLink, Wallet } from "lucide-react";
+import { Wallet } from "lucide-react";
 import { paymentDetails } from "@/lib/paymentDetails";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 export const inputClass =
   "h-11 rounded-none border-white/20 bg-[#151719] text-sm text-white placeholder:text-white/30";
-export const paypalAvailable = Boolean(paymentDetails.paypalLink);
+export const paypalAvailable = Boolean(paymentDetails.paypalQrImage);
 
 const headingClass =
   "flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/55";
@@ -50,23 +50,38 @@ export default function PaymentReferenceForm({
         </p>
         {paypalAvailable ? (
           <>
-            <p className="text-xs leading-relaxed text-white/60">
-              Pay <strong className="text-white">{totalLabel}</strong> using
-              PayPal, then enter the transaction ID below.
+            {paymentDetails.paypalQrIsDemo ? (
+              <p className="border border-amber-300/25 bg-amber-300/[.06] p-3 text-center text-[10px] font-bold uppercase tracking-[.1em] text-amber-200">
+                Demo preview only — this sample QR code cannot accept payment
+              </p>
+            ) : null}
+            <p className="text-center text-xs leading-relaxed text-white/60">
+              {paymentDetails.paypalQrIsDemo ? (
+                "Your PayPal QR code will appear here."
+              ) : (
+                <>
+                  Scan this code with PayPal to send{" "}
+                  <strong className="text-white">{totalLabel}</strong>.
+                </>
+              )}
             </p>
-            <a
-              href={paymentDetails.paypalLink}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 border border-white/15 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white/60 transition hover:border-[#ff5a36] hover:text-[#ff5a36]"
-            >
-              Open PayPal <ExternalLink size={13} />
-            </a>
+            <div className="mx-auto w-full max-w-60 bg-white p-3">
+              <img
+                src={paymentDetails.paypalQrImage}
+                alt="PayPal payment QR code"
+                className="aspect-square w-full object-contain"
+              />
+            </div>
+            <p className="text-center text-[10px] leading-5 text-white/40">
+              {paymentDetails.paypalQrIsDemo
+                ? "Replace the demo image with your real PayPal QR code before accepting payments."
+                : "Use another device to scan this code, then enter your PayPal transaction ID below."}
+            </p>
           </>
         ) : (
           <p className="text-xs leading-relaxed text-[#ff5a36]">
-            PayPal is not configured on this store yet. Please contact the
-            store for help before making a payment.
+            PayPal QR code is not configured on this store yet. Please contact
+            the store for help before making a payment.
           </p>
         )}
       </div>

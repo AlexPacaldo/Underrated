@@ -107,15 +107,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       closeCart: () => setCartOpen(false),
       addToCart: (product, finish = product.finishes[0]) => {
         if (!finish) return;
+        const available = Math.max(0, product.stockQuantity - product.reservedQuantity);
+        if (!available) return;
         setCart((lines) => {
           const existing = lines.find((line) => line.id === product.id && line.finish === finish);
-          if (existing) return lines.map((line) => (line === existing ? { ...line, quantity: Math.min(MAX_LINE_QUANTITY, line.quantity + 1) } : line));
+          if (existing && existing.quantity >= available) return lines;
+          if (existing) return lines.map((line) => (line === existing ? { ...line, quantity: Math.min(MAX_LINE_QUANTITY, available, line.quantity + 1) } : line));
           return [...lines, { id: product.id, quantity: 1, finish }];
         });
         setCartOpen(true);
       },
       updateQuantity: (id, finish, quantity) => {
-        setCart((lines) => lines.flatMap((line) => (line.id === id && line.finish === finish ? (quantity > 0 ? [{ ...line, quantity: Math.min(MAX_LINE_QUANTITY, Math.floor(quantity)) }] : []) : [line])));
+        const product = products.find((item) => item.id === id);
+        const available = product ? Math.max(0, product.stockQuantity - product.reservedQuantity) : 0;
+        setCart((lines) => lines.flatMap((line) => {
+          if (line.id !== id || line.finish !== finish) return [line];
+          const requested = Math.floor(quantity);
+          if (requested <= 0) return [];
+          const limit = requested < line.quantity
+            ? requested
+            : Math.min(MAX_LINE_QUANTITY, available, requested);
+          return limit > 0 ? [{ ...line, quantity: limit }] : [];
+        }));
       },
       removeLine: (id, finish) => setCart((lines) => lines.filter((line) => line.id !== id || line.finish !== finish)),
       clearCart: () => setCart([]),

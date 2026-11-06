@@ -11,8 +11,16 @@ import PreviewField from "@/components/admin/PreviewField";
 import type { ProductPreviewMode } from "@/lib/productPreview";
 
 export default function ProductCard({ product, preview }: { product: Product; priority?: boolean; preview?: ProductPreviewMode | null }) {
-  const { addToCart } = useStore();
+  const { addToCart, cart } = useStore();
   const { formatMoney } = useCurrency();
+  const availableStock = Math.max(
+    0,
+    product.stockQuantity - product.reservedQuantity
+  );
+  const inCart = cart
+    .filter(line => line.id === product.id)
+    .reduce((sum, line) => sum + line.quantity, 0);
+  const canAdd = inCart < availableStock;
   const leadImage = product.image;
   const galleryFrame = leadImage ? product.image_frames?.[leadImage] ?? "wide" : "wide";
   const cropPosition = leadImage
@@ -35,7 +43,7 @@ export default function ProductCard({ product, preview }: { product: Product; pr
             </div>
           </Link>
         </PreviewField>
-        <button aria-label={`Add ${product.name} to cart`} onClick={() => addToCart(product)} className="absolute bottom-3 right-3 grid size-9 place-items-center border border-white/30 bg-black/55 text-white backdrop-blur-sm transition hover:border-[#ff5a36] hover:bg-[#ff5a36] hover:text-black active:scale-95 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100">
+        <button aria-label={`Add ${product.name} to cart`} onClick={() => addToCart(product)} disabled={!canAdd} title={canAdd ? "Add to cart" : availableStock === 0 ? "Out of stock" : "Stock limit reached"} className="absolute bottom-3 right-3 grid size-9 place-items-center border border-white/30 bg-black/55 text-white backdrop-blur-sm transition hover:border-[#ff5a36] hover:bg-[#ff5a36] hover:text-black active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100">
           <Plus size={16} strokeWidth={2.5} />
         </button>
       </div>
