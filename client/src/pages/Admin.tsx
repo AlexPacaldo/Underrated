@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   Tags,
   Trash2,
-  Truck,
   Undo2,
   Upload,
   Users,
@@ -96,7 +95,6 @@ import {
   type AdminOrderStatus,
   type AdminProfile,
 } from "@/lib/admin";
-import { bookOrderShipment } from "@/lib/logistics";
 
 type Section =
   | "overview"
@@ -162,46 +160,18 @@ function OrderCard({
     ? available
     : [order.status, ...available];
   const [status, setStatus] = useState<AdminOrderStatus>(order.status);
-  const [fulfillmentNote, setFulfillmentNote] = useState(
-    order.fulfillment_note ?? ""
-  );
   const [trackingNumber, setTrackingNumber] = useState(
     order.tracking_number ?? ""
   );
-  const [adminNote, setAdminNote] = useState(order.admin_note ?? "");
   const [saving, setSaving] = useState(false);
-
-  // Parcel measurements. The catalogue keeps a display weight in a spec blob, not
-  // a shipping weight, so this is staff input rather than something derived.
-  const [parcel, setParcel] = useState({
-    weightKg: "",
-    lengthCm: "40",
-    widthCm: "30",
-    heightCm: "20",
-  });
-  const [booking, setBooking] = useState(false);
-  const [waybill, setWaybill] = useState<{
-    awb: string;
-    url: string | null;
-  } | null>(null);
-
-  // A parcel can only be booked once payment has cleared, and only for a
-  // Philippine address, because Bigate is a domestic courier. The server enforces
-  // both of these again; hiding the button is a courtesy, not the control.
-  const canBook = order.status === "paid" || order.status === "processing";
-  const domestic = order.shipping_address?.country_code === "PH";
 
   useEffect(() => {
     setStatus(order.status);
-    setFulfillmentNote(order.fulfillment_note ?? "");
     setTrackingNumber(order.tracking_number ?? "");
-    setAdminNote(order.admin_note ?? "");
   }, [
     order.id,
     order.status,
-    order.fulfillment_note,
     order.tracking_number,
-    order.admin_note,
   ]);
 
   // The rider reads the same rail on the order page, so the desk shows exactly
@@ -216,41 +186,13 @@ function OrderCard({
     trackingNumber: order.tracking_number,
   });
 
-  const book = async () => {
-    setBooking(true);
-    try {
-      const result = await bookOrderShipment(order.order_number, {
-        weightKg: Number(parcel.weightKg),
-        lengthCm: Number(parcel.lengthCm),
-        widthCm: Number(parcel.widthCm),
-        heightCm: Number(parcel.heightCm),
-      });
-      // The waybill is written to the order server-side; filling the field keeps
-      // the form honest if the save is deferred.
-      setTrackingNumber(result.awb);
-      setWaybill({ awb: result.awb, url: result.waybillUrl });
-      toast.success("Shipment booked", {
-        description: `${result.awb} via ${result.courierCode}. Tracking updates from the courier's callbacks.`,
-      });
-      await onUpdated();
-    } catch (error) {
-      toast.error("Could not book shipment.", {
-        description: error instanceof Error ? error.message : "Try again.",
-      });
-    } finally {
-      setBooking(false);
-    }
-  };
-
   const save = async () => {
     setSaving(true);
     try {
       await updateAdminOrderStatus(
         order.id,
         status,
-        fulfillmentNote,
-        trackingNumber,
-        adminNote
+        trackingNumber
       );
       toast.success("Order updated", {
         description:
@@ -383,117 +325,6 @@ function OrderCard({
           ))}
         </div>
       ) : null}
-      {canBook && domestic ? (
-        <div className="mt-4 border border-[#ff5a36]/30 bg-[#ff5a36]/5 p-4">
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36]">
-            Book a Bigate parcel
-          </p>
-          <p className="mt-2 text-xs leading-5 text-white/50">
-            Books a waybill with Bigate and starts tracking for this order. The
-            address, recipient and items come from the order, so only the
-            measurements below are needed.
-          </p>
-          {waybill ? (
-            <p className="mt-3 text-xs text-white/70">
-              Booked <span className="font-bold text-white">{waybill.awb}</span>
-              .
-              {waybill.url ? (
-                <>
-                  {" "}
-                  <a
-                    href={waybill.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                  >
-                    Open label
-                  </a>
-                </>
-              ) : (
-                ""
-              )}
-            </p>
-          ) : null}
-          <div className="mt-3 grid gap-3 sm:grid-cols-4">
-            <label className={labelClass}>
-              Weight (kg)
-              <input
-                type="number"
-                min="0.1"
-                step="0.1"
-                value={parcel.weightKg}
-                onChange={event =>
-                  setParcel({ ...parcel, weightKg: event.target.value })
-                }
-                className={inputClass}
-                placeholder="2.5"
-              />
-            </label>
-            <label className={labelClass}>
-              Length (cm)
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={parcel.lengthCm}
-                onChange={event =>
-                  setParcel({ ...parcel, lengthCm: event.target.value })
-                }
-                className={inputClass}
-              />
-            </label>
-            <label className={labelClass}>
-              Width (cm)
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={parcel.widthCm}
-                onChange={event =>
-                  setParcel({ ...parcel, widthCm: event.target.value })
-                }
-                className={inputClass}
-              />
-            </label>
-            <label className={labelClass}>
-              Height (cm)
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={parcel.heightCm}
-                onChange={event =>
-                  setParcel({ ...parcel, heightCm: event.target.value })
-                }
-                className={inputClass}
-              />
-            </label>
-          </div>
-          <button
-            onClick={book}
-            disabled={booking || parcel.weightKg === ""}
-            className="mt-3 inline-flex h-10 items-center justify-center gap-2 border border-[#ff5a36] px-4 text-[10px] font-black uppercase tracking-[.14em] text-[#ff5a36] disabled:opacity-50"
-          >
-            {booking ? (
-              "Booking..."
-            ) : (
-              <>
-                <Truck size={14} />
-                Book shipment
-              </>
-            )}
-          </button>
-          <p className="mt-2 text-[10px] leading-4 text-white/35">
-            Creates a real courier label. If the request times out, check Bigate
-            before trying again.
-          </p>
-        </div>
-      ) : canBook && !domestic ? (
-        <p className="mt-4 border border-white/10 p-3 text-[10px] leading-4 text-white/40">
-          This order ships outside the Philippines. Bigate is a domestic
-          courier, so book an international service instead.
-        </p>
-      ) : null}
       <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 sm:grid-cols-2">
         <label className={labelClass}>
           Status
@@ -521,24 +352,6 @@ function OrderCard({
             placeholder="Optional"
           />
         </label>
-        <label className={labelClass}>
-          Message to customer
-          <input
-            value={fulfillmentNote}
-            onChange={event => setFulfillmentNote(event.target.value)}
-            className={inputClass}
-            placeholder="Shown to the rider"
-          />
-        </label>
-        <label className={labelClass}>
-          Private staff note
-          <input
-            value={adminNote}
-            onChange={event => setAdminNote(event.target.value)}
-            className={inputClass}
-            placeholder="Internal only"
-          />
-        </label>
         <button
           onClick={save}
           disabled={saving}
@@ -557,8 +370,8 @@ function OrderCard({
         </button>
         <p className="text-[10px] leading-4 text-white/35 sm:col-span-2">
           {available.length === 0
-            ? "This order is closed. You can still record tracking and internal notes."
-            : "Leave the status unchanged to save tracking or notes only."}
+            ? "This order is closed. You can still record its tracking number."
+            : "Leave the status unchanged to save the tracking number only."}
         </p>
       </div>
     </article>
@@ -849,7 +662,6 @@ function ProductEditor({
     overflowX: number;
     overflowY: number;
   } | null>(null);
-  const [cardZoom, setCardZoom] = useState(1);
   const [cropX, cropY] = productImagePositionCoordinates(
     framingPhoto ? draft.image_positions?.[framingPhoto] : undefined
   );
@@ -877,6 +689,7 @@ function ProductEditor({
   const [cardCropX, cardCropY] = productImagePositionCoordinates(
     draft.card_image_position
   );
+  const cardZoom = draft.card_image_zoom ?? 1;
   const cardPhotoRatio = cardImageDimensions
     ? cardImageDimensions.width / cardImageDimensions.height
     : null;
@@ -970,7 +783,7 @@ function ProductEditor({
       card_image_position: formatProductImagePosition(axis === "x" ? value : x, axis === "y" ? value : y),
     }));
   };
-  const resetCardCropPosition = () => setDraft(current => ({ ...current, card_image_position: undefined }));
+  const resetCardCropPosition = () => setDraft(current => ({ ...current, card_image_position: undefined, card_image_zoom: 1 }));
   const updateCropPosition = (axis: "x" | "y", value: number) => {
     if (!framingPhoto) return;
     const [x, y] = productImagePositionCoordinates(
@@ -1593,7 +1406,7 @@ function ProductEditor({
                       max="3"
                       step="0.01"
                       value={cardZoom}
-                      onChange={event => setCardZoom(Number(event.target.value))}
+                      onChange={event => update("card_image_zoom", Number(event.target.value))}
                       aria-label="Shop card photo zoom"
                       className="h-1.5 w-full cursor-pointer accent-[#ff5a36]"
                     />

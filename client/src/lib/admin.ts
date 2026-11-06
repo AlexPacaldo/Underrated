@@ -1,7 +1,7 @@
 import type { AccountRole } from "@/contexts/AuthContext";
 import { mapCategory, mapHomepage, mapProduct } from "@/contexts/CatalogContext";
 import type { HomepageContent } from "@/data/storefront";
-import { isProductImagePosition, normalizeImageFrames, normalizeImagePositions, type CatalogCategory, type Product } from "@/data/products";
+import { isProductImagePosition, normalizeCardImageZoom, normalizeImageFrames, normalizeImagePositions, type CatalogCategory, type Product } from "@/data/products";
 import type { DeliveryAddress } from "@/lib/deliveryAddress";
 import type { OrderStatus } from "@/lib/orderStatus";
 import type { AccountPaymentMethod } from "@/lib/accountOrders";
@@ -22,9 +22,7 @@ export type AdminOrder = {
   fx_rate: number;
   shipping_region: string;
   shipping_address: DeliveryAddress | null;
-  fulfillment_note: string | null;
   tracking_number: string | null;
-  admin_note: string | null;
   paid_at: string | null;
   processing_at: string | null;
   shipped_at: string | null;
@@ -47,8 +45,6 @@ export type AdminProfile = {
 export type AdminOrderFulfillment = {
   order_id: string;
   tracking_number: string | null;
-  fulfillment_note: string | null;
-  admin_note: string | null;
   paid_at: string | null;
   processing_at: string | null;
   shipped_at: string | null;
@@ -63,18 +59,16 @@ export async function fetchAdminOrders() {
       .from("orders")
       .select("id,order_number,user_id,status,subtotal_cents,shipping_cents,total_cents,currency,display_currency,fx_rate,shipping_region,shipping_address,created_at,updated_at,order_items(id,product_name,finish,quantity,line_total_cents),manual_payment_submissions(id,payment_method,reference_number,payer_name,created_at)")
       .order("created_at", { ascending: false }),
-    supabase.from("order_fulfillment").select("order_id,tracking_number,fulfillment_note,admin_note,paid_at,processing_at,shipped_at,delivered_at,rejected_at"),
+    supabase.from("order_fulfillment").select("order_id,tracking_number,paid_at,processing_at,shipped_at,delivered_at,rejected_at"),
   ]);
   if (orderResult.error) throw orderResult.error;
   if (fulfillmentResult.error) throw fulfillmentResult.error;
   const fulfillment = new Map<string, AdminOrderFulfillment>((fulfillmentResult.data ?? []).map((row) => [row.order_id, row] as const));
-  return ((orderResult.data ?? []) as Omit<AdminOrder, "tracking_number" | "fulfillment_note" | "admin_note" | "paid_at" | "processing_at" | "shipped_at" | "delivered_at" | "rejected_at">[]).map((order) => {
+  return ((orderResult.data ?? []) as Omit<AdminOrder, "tracking_number" | "paid_at" | "processing_at" | "shipped_at" | "delivered_at" | "rejected_at">[]).map((order) => {
     const detail = fulfillment.get(order.id);
     return {
       ...order,
       tracking_number: detail?.tracking_number ?? null,
-      fulfillment_note: detail?.fulfillment_note ?? null,
-      admin_note: detail?.admin_note ?? null,
       paid_at: detail?.paid_at ?? null,
       processing_at: detail?.processing_at ?? null,
       shipped_at: detail?.shipped_at ?? null,
@@ -84,14 +78,14 @@ export async function fetchAdminOrders() {
   });
 }
 
-export async function updateAdminOrderStatus(orderId: string, status: AdminOrderStatus, fulfillmentNote: string, trackingNumber: string, adminNote: string) {
+export async function updateAdminOrderStatus(orderId: string, status: AdminOrderStatus, trackingNumber: string) {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.rpc("admin_update_order_status", {
     p_order_id: orderId,
     p_status: status,
-    p_fulfillment_note: fulfillmentNote,
+    p_fulfillment_note: null,
     p_tracking_number: trackingNumber,
-    p_admin_note: adminNote,
+    p_admin_note: null,
   });
   if (error) throw error;
   return data;
@@ -157,6 +151,7 @@ export async function saveAdminProduct(product: Product) {
     image_positions: normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), product.image_positions),
     image_frames: normalizeImageFrames([image, ...images].filter((item): item is string => Boolean(item)), product.image_frames),
     card_image_position: isProductImagePosition(product.card_image_position) ? product.card_image_position : null,
+    card_image_zoom: normalizeCardImageZoom(product.card_image_zoom),
     visual: product.visual,
     specs: product.specs,
     fitment: product.fitment,

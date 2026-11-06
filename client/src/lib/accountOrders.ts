@@ -27,7 +27,6 @@ export type AccountOrderItem = {
 export type AccountOrderTracking = {
   order_id: string;
   tracking_number: string | null;
-  fulfillment_note: string | null;
   paid_at: string | null;
   processing_at: string | null;
   shipped_at: string | null;
@@ -74,13 +73,13 @@ const orderColumns =
 const itemColumns =
   "id,order_id,product_id,product_name,finish,quantity,unit_price_cents,line_total_cents,product_slug,product_image_path,product_images,product_image_positions,product_visual,product_archived,product_finishes";
 
-const trackingColumns = "order_id,tracking_number,fulfillment_note,paid_at,processing_at,shipped_at,delivered_at,rejected_at,updated_at";
+const trackingColumns = "order_id,tracking_number,paid_at,processing_at,shipped_at,delivered_at,rejected_at,updated_at";
 
 /**
  * Three reads joined in the client: the order itself, the lines with the catalog
  * photo, and the shipment milestones. The last two come from views because
- * order_items has no foreign key to products and order_fulfillment keeps an
- * admin-only note that a policy cannot hide.
+ * order_items has no foreign key to products and order_fulfillment is not
+ * directly readable by customers.
  */
 export async function fetchAccountOrders(orderNumber?: string) {
   if (!supabase) throw new Error("Supabase is not configured.");

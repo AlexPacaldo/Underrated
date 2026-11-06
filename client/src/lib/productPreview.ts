@@ -2,7 +2,7 @@
  * Design direction: Technical Drop Editorial — the admin item editor and its preview frame talk over one small typed message protocol.
  */
 import type { Product, ProductVisual, ProductImagePosition } from "@/data/products";
-import { isProductImageFrame, isProductImagePosition } from "@/data/products";
+import { isProductImageFrame, isProductImagePosition, normalizeCardImageZoom } from "@/data/products";
 
 export const productPreviewPath = "/admin/product-preview";
 
@@ -82,6 +82,7 @@ export function readPreviewProduct(data: unknown): Product | null {
     }
   }
   const cardImagePosition = isProductImagePosition(row.card_image_position) ? row.card_image_position : undefined;
+  const cardImageZoom = normalizeCardImageZoom(row.card_image_zoom);
   return {
     id: text(row.id, "draft"),
     slug: text(row.slug, ""),
@@ -97,6 +98,7 @@ export function readPreviewProduct(data: unknown): Product | null {
     image_positions: imagePositions,
     image_frames: imageFrames,
     card_image_position: cardImagePosition,
+    card_image_zoom: cardImageZoom,
     visual,
     specs,
     fitment: { headline: text(rawFitment.headline, ""), compatibility: list(rawFitment.compatibility), checkBeforeRide: text(rawFitment.checkBeforeRide, "") },

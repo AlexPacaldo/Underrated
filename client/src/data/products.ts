@@ -44,6 +44,11 @@ export function formatProductImagePosition(x: number, y: number): ProductImagePo
   return `${x.toFixed(2)}% ${y.toFixed(2)}%` as ProductImagePosition;
 }
 
+export function normalizeCardImageZoom(value: unknown): number {
+  const zoom = Number(value);
+  return Number.isFinite(zoom) ? Math.max(1, Math.min(3, zoom)) : 1;
+}
+
 /** Every photo in order, the primary first. Framing is keyed by url, so this is the list positions are kept against. */
 export function productPhotos(product: Pick<Product, "image" | "images">) {
   const photos: string[] = [];
@@ -95,6 +100,8 @@ export type Product = {
   image_positions?: Partial<Record<string, ProductImagePosition>>;
   /** Independent crop used by the shop card when the gallery uses a wide frame. */
   card_image_position?: ProductImagePosition;
+  /** Zoom applied to the shop-card crop. */
+  card_image_zoom?: number;
   /** Which display frame each photo uses, keyed by photo url. */
   image_frames?: Partial<Record<string, ProductImageFrame>>;
   visual: ProductVisual;

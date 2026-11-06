@@ -198,20 +198,12 @@ export default function AccountOrder() {
                   })}
                 />
 
-                {order.tracking?.tracking_number || order.tracking?.fulfillment_note ? (
+                {order.tracking?.tracking_number ? (
                   <div className="mt-6 grid gap-3 border-t border-white/10 pt-5 sm:grid-cols-2">
-                    {order.tracking.tracking_number ? (
-                      <div>
-                        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/45"><Truck size={13} className="text-[#ff5a36]" />Tracking number</p>
-                        <p className="mt-2 text-sm font-bold text-white">{order.tracking.tracking_number}</p>
-                      </div>
-                    ) : null}
-                    {order.tracking.fulfillment_note ? (
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/45">Shipping note</p>
-                        <p className="mt-2 text-xs leading-5 text-white/60">{order.tracking.fulfillment_note}</p>
-                      </div>
-                    ) : null}
+                    <div>
+                      <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/45"><Truck size={13} className="text-[#ff5a36]" />Tracking number</p>
+                      <p className="mt-2 text-sm font-bold text-white">{order.tracking.tracking_number}</p>
+                    </div>
                   </div>
                 ) : null}
               </section>

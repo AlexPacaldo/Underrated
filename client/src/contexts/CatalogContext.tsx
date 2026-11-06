@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { isProductImagePosition, normalizeImageFrames, normalizeImagePositions, categories as fallbackCategories, products as fallbackProducts, type CatalogCategory, type Product, type ProductVisual } from "@/data/products";
+import { isProductImagePosition, normalizeCardImageZoom, normalizeImageFrames, normalizeImagePositions, categories as fallbackCategories, products as fallbackProducts, type CatalogCategory, type Product, type ProductVisual } from "@/data/products";
 import { defaultHomepageContent, type HomepageContent } from "@/data/storefront";
 import { supabase } from "@/lib/supabase";
 
@@ -37,6 +37,7 @@ export function mapProduct(value: unknown): Product {
   const image_positions = normalizeImagePositions([image, ...images].filter((item): item is string => Boolean(item)), row.image_positions);
   const image_frames = normalizeImageFrames([image, ...images].filter((item): item is string => Boolean(item)), row.image_frames);
   const card_image_position = isProductImagePosition(row.card_image_position) ? row.card_image_position : undefined;
+  const card_image_zoom = normalizeCardImageZoom(row.card_image_zoom);
   const priceCents = Number(row.price_php_cents ?? 0);
 
   return {
@@ -54,6 +55,7 @@ export function mapProduct(value: unknown): Product {
     image_positions,
     image_frames,
     card_image_position,
+    card_image_zoom,
     visual,
     specs,
     fitment: {
@@ -148,7 +150,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     requestId.current = currentRequest;
     setLoading(true);
     const [productResult, homepageResult, categoryResult] = await Promise.all([
-      supabase.from("products").select("id,slug,name,category,price_php_cents,badge,descriptor,description,finishes,image_path,images,image_positions,image_frames,card_image_position,visual,specs,fitment,featured,archived,sort_order").eq("archived", false).order("sort_order", { ascending: true }),
+      supabase.from("products").select("id,slug,name,category,price_php_cents,badge,descriptor,description,finishes,image_path,images,image_positions,image_frames,card_image_position,card_image_zoom,visual,specs,fitment,featured,archived,sort_order").eq("archived", false).order("sort_order", { ascending: true }),
       supabase.from("homepage_content").select("*").eq("id", "primary").maybeSingle(),
       supabase.from("categories").select("id,name,sort_order").order("sort_order", { ascending: true }),
     ]);
