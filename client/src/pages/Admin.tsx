@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner";
 import PreviewStage from "@/components/admin/PreviewStage";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
+import VariationEditorDialog from "@/components/admin/VariationEditorDialog";
 import OrderTimeline from "@/components/account/OrderTimeline";
 import "./Admin.css";
 import ProductVisual from "@/components/ProductVisual";
@@ -34,6 +35,8 @@ import { useAuth, type AccountRole } from "@/contexts/AuthContext";
 import { useCatalog } from "@/contexts/CatalogContext";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import {
+  finishReservedStock,
+  finishStock,
   productImagePositions,
   productImageFrameRatio,
   formatProductImagePosition,
@@ -97,7 +100,7 @@ import {
   saveAdminCategory,
   saveAdminHomepage,
   saveAdminProduct,
-  saveAdminProductStock,
+  saveAdminProductVariation,
   setAdminProductArchived,
   setAdminProductFeatured,
   setAdminProfileRole,
@@ -180,6 +183,7 @@ function OrderCard({
     order.tracking_number ?? ""
   );
   const [saving, setSaving] = useState(false);
+  const fulfillmentEdited = status !== order.status || trackingNumber !== (order.tracking_number ?? "");
   const [expanded, setExpanded] = useState(false);
   const paymentSubmissions = [...order.manual_payment_submissions].sort(
     (first, second) =>
@@ -503,22 +507,25 @@ function OrderCard({
                   placeholder="Optional"
                 />
               </label>
-              <button
-                onClick={save}
-                disabled={saving}
-                className="inline-flex h-11 items-center justify-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black transition hover:bg-[#ff704f] disabled:opacity-50 sm:min-w-40"
-              >
-                {saving ? (
-                  "Saving..."
-                ) : (
-                  <>
-                    <Save size={14} />
-                    {status === order.status
-                      ? "Save details"
-                      : `Mark ${orderStatusLabels[status].toLowerCase()}`}
-                  </>
-                )}
-              </button>
+              {fulfillmentEdited && <div className="flex flex-wrap gap-2 sm:justify-end">
+                <button type="button" onClick={() => { setStatus(order.status); setTrackingNumber(order.tracking_number ?? ""); }} disabled={saving} className="inline-flex h-11 items-center justify-center border border-white/20 px-4 text-[10px] font-black uppercase tracking-[.12em] text-white/70 transition hover:border-white/50 hover:text-white disabled:opacity-50">Cancel</button>
+                <button
+                  onClick={save}
+                  disabled={saving}
+                  className="inline-flex h-11 items-center justify-center gap-2 bg-[#ff5a36] px-5 text-[10px] font-black uppercase tracking-[.14em] text-black transition hover:bg-[#ff704f] disabled:opacity-50 sm:min-w-40"
+                >
+                  {saving ? (
+                    "Saving..."
+                  ) : (
+                    <>
+                      <Save size={14} />
+                      {status === order.status
+                        ? "Save details"
+                        : `Mark ${orderStatusLabels[status].toLowerCase()}`}
+                    </>
+                  )}
+                </button>
+              </div>}
               <p className="text-[10px] leading-4 text-white/35 sm:col-span-3">
                 {available.length === 0
                   ? "This order is closed. You can still record its tracking number."
@@ -545,7 +552,11 @@ function newProduct(categories: CatalogCategory[]): Product {
     reservedQuantity: 0,
     descriptor: "",
     description: "",
-    finishes: ["Graphite"],
+    finishes: ["Standard"],
+    variationAttributes: [],
+    variations: [{ finish: "Standard", values: {}, pricePhpCents: 0 }],
+    finishStock: { Standard: 0 },
+    finishReservedStock: {},
     visual: "hoods",
     specs: [],
     fitment: { headline: "", compatibility: [], checkBeforeRide: "" },
@@ -563,6 +574,21 @@ function withProductWeight(specs: Product["specs"], weight: string) {
   return cleanWeight
     ? [...otherSpecs, { label: "Weight", value: cleanWeight }]
     : otherSpecs;
+}
+
+function finishColor(value: string) {
+  const color = value.toLowerCase();
+  if (color.includes("black") || color.includes("graphite")) return "#202124";
+  if (color.includes("white")) return "#f2f0e8";
+  if (color.includes("silver") || color.includes("gray") || color.includes("grey")) return "#929598";
+  if (color.includes("blue")) return "#2451a6";
+  if (color.includes("violet") || color.includes("purple")) return "#b34ad7";
+  if (color.includes("yellow")) return "#ffd84d";
+  if (color.includes("green")) return "#04ae68";
+  if (color.includes("pink")) return "#f04ca8";
+  if (color.includes("red")) return "#f23b3b";
+  if (color.includes("orange") || color.includes("tangerine")) return "#ff5a36";
+  return "#777";
 }
 
 /** The lead photo stays in image and every extra photo stays in gallery order, with no duplicates. */
@@ -634,6 +660,7 @@ function ProductEditor({
     product.shippingWeightKg?.toString() ?? ""
   );
   const [saving, setSaving] = useState(false);
+  const [variationsOpen, setVariationsOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [draggedImage, setDraggedImage] = useState<string | null>(null);
   const [device, setDevice] = useState(previewDevices[0]);
@@ -658,6 +685,8 @@ function ProductEditor({
       image_positions: draft.image_positions,
       image_frames: draft.image_frames,
       finishes: draft.finishes.map(item => item.trim()).filter(Boolean),
+      variations: draft.variations,
+      variationAttributes: draft.variationAttributes,
       specs: withProductWeight(draft.specs, weight),
     }),
     [draft, weight]
@@ -751,7 +780,12 @@ function ProductEditor({
       });
       return;
     }
-    if (!Number.isFinite(draft.price) || draft.price < 0) {
+    const variationPrices = draft.variations?.map(variation => variation.pricePhpCents);
+    const hasVariationPrices = Boolean(variationPrices?.length && variationPrices.every(price => Number.isSafeInteger(price) && (price ?? -1) >= 0));
+    const storedProductPrice = hasVariationPrices
+      ? Math.min(...(variationPrices as number[])) / 100
+      : draft.price;
+    if (!Number.isFinite(storedProductPrice) || storedProductPrice < 0 || Math.round(storedProductPrice * 100) > 2147483647) {
       toast.error("Price is invalid.", {
         description: "Enter the PHP price as a positive number.",
       });
@@ -782,6 +816,7 @@ function ProductEditor({
     try {
       await saveAdminProduct({
         ...draft,
+        price: storedProductPrice,
         slug,
         finishes: cleanFinishes,
         shippingWeightKg: packedWeight,
@@ -1163,7 +1198,7 @@ function ProductEditor({
             <div className="mb-4">
               <h3 className="text-sm font-bold text-white">Item details</h3>
               <p className="mt-1 text-xs text-white/45">
-                The name, category, price, and description customers see.
+                The name, category, and description customers see.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1203,20 +1238,6 @@ function ProductEditor({
                 </select>
               </label>
               <label className={labelClass}>
-                Price (PHP)
-                <input
-                  data-editor-field="price"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={draft.price}
-                  onChange={event =>
-                    update("price", Number(event.target.value))
-                  }
-                  className={inputClass}
-                />
-              </label>
-              <label className={labelClass}>
                 Badge{" "}
                 <span className="font-normal text-white/40">Optional</span>
                 <input
@@ -1251,27 +1272,19 @@ function ProductEditor({
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <label className={labelClass}>
-                Finishes{" "}
-                <span className="font-normal text-white/40">
-                  Comma-separated
-                </span>
-                <input
-                  data-editor-field="finishes"
-                  value={draft.finishes.join(", ")}
-                  onChange={event =>
-                    update(
-                      "finishes",
-                      event.target.value
-                        .split(",")
-                        .map(value => value.trim())
-                        .filter(Boolean)
-                    )
-                  }
-                  className={inputClass}
-                  placeholder="Graphite, Iced White"
-                />
-              </label>
+              <div className={`${labelClass} sm:col-span-2`} data-editor-field="finishes">
+                Product variations
+                <p className="mt-1 text-[10px] font-normal leading-4 text-white/40">Set each combination’s options, price, and stock in the variation workspace.</p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button type="button" data-editor-field="price" onClick={() => setVariationsOpen(true)} className="inline-flex h-11 items-center gap-2 border border-[#ff5a36]/60 px-4 text-xs font-bold uppercase tracking-[.1em] text-white hover:bg-[#ff5a36] hover:text-black"><Plus size={15} /> Configure variations</button>
+                  <span className="text-xs text-white/45">{draft.variations?.length ?? draft.finishes.length} combinations</span>
+                  <span className="text-xs text-white/35">{(draft.variationAttributes ?? [{ name: "Color", options: draft.finishes }]).map(attribute => attribute.name).join(" · ") || "No selectable options"}</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {(draft.variations ?? []).slice(0, 6).map(variant => <span key={variant.finish} className="border border-white/10 px-2 py-1 text-[10px] text-white/55">{variant.finish}</span>)}
+                  {(draft.variations?.length ?? 0) > 6 && <span className="px-2 py-1 text-[10px] text-white/35">+{(draft.variations?.length ?? 0) - 6} more</span>}
+                </div>
+              </div>
               <label className={labelClass}>
                 Item weight{" "}
                 <span className="font-normal text-[#ff5a36]">Required</span>
@@ -1792,6 +1805,21 @@ function ProductEditor({
           )}
         </button>
       </div>
+      <VariationEditorDialog
+        open={variationsOpen}
+        onOpenChange={setVariationsOpen}
+        attributes={draft.variationAttributes ?? [{ name: "Color", options: draft.finishes }]}
+        variations={draft.variations ?? draft.finishes.map(finish => ({ finish, values: { Color: finish } }))}
+        finishStock={draft.finishStock ?? {}}
+        finishReservedStock={draft.finishReservedStock ?? {}}
+        onSave={(attributes, variations, stock) => {
+          update("variationAttributes", attributes);
+          update("variations", variations);
+          update("finishes", variations.map(variant => variant.finish));
+          update("finishStock", stock);
+          update("price", variations.length ? Math.min(...variations.map(variant => variant.pricePhpCents ?? 0)) / 100 : 0);
+        }}
+      />
     </div>
   );
 }
@@ -1939,6 +1967,9 @@ function ProductManager({
                 <p className="mt-1 truncate text-sm text-white/50">
                   {product.category}
                 </p>
+                <p className="mt-1 truncate text-xs text-white/40">
+                  {product.finishes.length} finish{product.finishes.length === 1 ? "" : "es"} · {product.stockQuantity - product.reservedQuantity} available
+                </p>
                 <span
                   className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${product.archived ? "bg-slate-100 text-slate-600" : "bg-emerald-50 text-emerald-700"}`}
                 >
@@ -2001,6 +2032,11 @@ function ProductManager({
   );
 }
 
+function inventoryFinishes(product: Product) {
+  return [...new Set([...product.finishes, ...Object.keys(product.finishStock ?? {})])]
+    .filter(finish => product.finishes.includes(finish) || finishReservedStock(product, finish) > 0);
+}
+
 function InventoryManager({
   products,
   reload,
@@ -2011,22 +2047,27 @@ function InventoryManager({
   notify: () => Promise<void>;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [variationQuery, setVariationQuery] = useState("");
 
   useEffect(() => {
     setDrafts(current => {
       const next = { ...current };
       for (const product of products) {
-        if (!(product.id in next))
-          next[product.id] = String(product.stockQuantity);
+        for (const finish of product.finishes) {
+          const key = `${product.id}::${finish}`;
+          if (!(key in next)) next[key] = String(finishStock(product, finish));
+        }
       }
       return next;
     });
   }, [products]);
 
-  const saveStock = async (product: Product) => {
-    const raw = drafts[product.id] ?? "";
+  const saveVariation = async (product: Product, finish: string) => {
+    const key = `${product.id}::${finish}`;
+    const raw = drafts[key] ?? String(finishStock(product, finish));
     const quantity = Number(raw);
     if (
       !/^\d+$/.test(raw) ||
@@ -2036,21 +2077,32 @@ function InventoryManager({
       toast.error("Enter a whole stock quantity.");
       return;
     }
-    if (quantity < product.reservedQuantity) {
+    const reserved = finishReservedStock(product, finish);
+    if (quantity < reserved) {
       toast.error("Stock cannot be lower than reserved units.", {
-        description: `${product.reservedQuantity} unit(s) are currently held for open orders.`,
+        description: `${reserved} ${finish} unit(s) are currently held for open orders.`,
       });
       return;
     }
 
-    setSavingId(product.id);
+    const variation = product.variations?.find(item => item.finish === finish);
+    const fallbackPrice = ((variation?.pricePhpCents ?? Math.round(product.price * 100)) / 100).toFixed(2);
+    const rawPrice = variation ? priceDrafts[key] ?? fallbackPrice : null;
+    const amount = rawPrice === null ? null : Number(rawPrice);
+    const cents = amount === null ? null : Math.round(amount * 100);
+    if (rawPrice !== null && (!/^\d+(?:\.\d{1,2})?$/.test(rawPrice) || cents === null || !Number.isSafeInteger(cents) || cents < 0 || cents > 2147483647)) {
+      toast.error("Enter a valid price with up to two decimal places.");
+      return;
+    }
+
+    setSavingId(key);
     try {
-      await saveAdminProductStock(product.id, quantity);
-      toast.success(`${product.name} stock updated.`);
+      await saveAdminProductVariation(product.id, finish, quantity, cents);
+      toast.success(`${product.name} · ${finish} updated.`);
       await reload();
       await notify();
     } catch (error) {
-      toast.error("Could not update stock.", {
+      toast.error("Could not save variation changes.", {
         description: error instanceof Error ? error.message : "Try again.",
       });
     } finally {
@@ -2058,11 +2110,18 @@ function InventoryManager({
     }
   };
 
-  const visibleProducts = products.filter(product =>
-    `${product.name} ${product.category}`
+  const visibleProducts = products.filter(product => {
+    const itemMatches = `${product.name} ${product.category}`
       .toLowerCase()
-      .includes(query.trim().toLowerCase())
-  );
+      .includes(query.trim().toLowerCase());
+    const optionQuery = variationQuery.trim().toLowerCase();
+    const hasMatchingOption = !optionQuery || inventoryFinishes(product).some(finish => {
+      const variant = product.variations?.find(item => item.finish === finish);
+      const labels = variant ? Object.entries(variant.values).map(([name, value]) => `${name} ${value}`).join(" ") : finish;
+      return `${finish} ${labels}`.toLowerCase().includes(optionQuery);
+    });
+    return itemMatches && hasMatchingOption;
+  });
 
   return (
     <div className="space-y-6">
@@ -2074,97 +2133,84 @@ function InventoryManager({
           Inventory
         </h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">
-          Set the physical units on hand for each item. Orders reserve units at
+          Set the physical units on hand for each product combination. Orders reserve units at
           checkout; on-hand stock is reduced when an order is marked shipped.
           Cancelled or rejected orders release their reservation.
         </p>
       </header>
 
-      <label className="relative block max-w-xl">
-        <span className="sr-only">Search inventory</span>
-        <Search
-          size={17}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-        />
-        <input
-          type="search"
-          value={query}
-          onChange={event => setQuery(event.target.value)}
-          placeholder="Search items"
-          className={`${inputClass} pl-10`}
-        />
-      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="relative block">
+          <span className="sr-only">Search inventory items</span>
+          <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search items" className={`${inputClass} pl-10`} />
+        </label>
+        <label className="relative block">
+          <span className="sr-only">Search product combinations</span>
+          <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input type="search" value={variationQuery} onChange={event => setVariationQuery(event.target.value)} placeholder="Filter by color, bend, rise…" className={`${inputClass} pl-10`} />
+        </label>
+      </div>
 
       <div className="overflow-hidden border border-white/15">
-        <div className="hidden grid-cols-[minmax(0,1fr)_150px_120px_120px_130px] gap-4 border-b border-white/10 bg-white/[.03] px-5 py-3 text-[10px] font-black uppercase tracking-[.14em] text-white/40 lg:grid">
-          <span>Shop item</span>
-          <span>On hand</span>
-          <span>Reserved</span>
-          <span>Available</span>
-          <span />
-        </div>
-        {visibleProducts.map(product => {
-          const quantity = Number(drafts[product.id] ?? product.stockQuantity);
-          const available = Math.max(
-            0,
-            (Number.isFinite(quantity) ? quantity : 0) -
-              product.reservedQuantity
-          );
-          return (
-            <article
-              key={product.id}
-              className="grid gap-3 border-b border-white/10 p-4 last:border-b-0 sm:p-5 lg:grid-cols-[minmax(0,1fr)_150px_120px_120px_130px] lg:items-center lg:gap-4"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-bold text-white">{product.name}</p>
-                <p className="mt-1 text-xs text-white/40">
-                  {product.category}
-                  {product.archived ? " · Archived" : ""}
-                </p>
-              </div>
-              <label className="grid gap-2 text-xs font-semibold text-white/40">
-                <span className="lg:sr-only">On hand</span>
-                <input
-                  type="number"
-                  min={product.reservedQuantity}
-                  max={2147483647}
-                  step="1"
-                  inputMode="numeric"
-                  aria-label={`${product.name} units on hand`}
-                  value={drafts[product.id] ?? product.stockQuantity}
-                  onChange={event =>
-                    setDrafts(current => ({
-                      ...current,
-                      [product.id]: event.target.value,
-                    }))
-                  }
-                  className={inputClass}
-                />
-              </label>
-              <div className="flex items-center justify-between text-sm lg:block">
-                <span className="text-white/40 lg:hidden">Reserved</span>
-                <span className="font-semibold tabular-nums text-white/75">
-                  {product.reservedQuantity}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm lg:block">
-                <span className="text-white/40 lg:hidden">Available</span>
-                <span
-                  className={`font-bold tabular-nums ${available ? "text-emerald-300" : "text-[#ff5a36]"}`}
-                >
-                  {available}
-                </span>
-              </div>
-              <button
-                onClick={() => void saveStock(product)}
-                disabled={savingId === product.id}
-                className="h-11 border border-white/20 px-4 text-[10px] font-black uppercase tracking-[.14em] text-white transition hover:border-[#ff5a36] hover:text-[#ff5a36] disabled:opacity-40"
-              >
-                {savingId === product.id ? "Saving…" : "Save stock"}
-              </button>
-            </article>
-          );
-        })}
+        {visibleProducts.map(product => (
+          <details key={product.id} className="group border-b border-white/10 last:border-b-0">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-white/[.02] px-4 py-4 outline-none transition hover:bg-white/[.045] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ff5a36] sm:px-5 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0"><span className="block truncate font-bold text-white">{product.name}</span><span className="mt-1 block text-xs text-white/40">{product.category}{product.archived ? " · Archived" : ""} · {inventoryFinishes(product).filter(finish => {
+                if (!variationQuery.trim()) return true;
+                const variant = product.variations?.find(item => item.finish === finish);
+                const labels = variant ? Object.entries(variant.values).map(([name, value]) => `${name} ${value}`).join(" ") : finish;
+                return `${finish} ${labels}`.toLowerCase().includes(variationQuery.trim().toLowerCase());
+              }).length} variations</span></span>
+              <ChevronDown size={18} className="shrink-0 text-white/45 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-white/[.06] bg-black/10">
+            {inventoryFinishes(product).filter(finish => {
+              if (!variationQuery.trim()) return true;
+              const variant = product.variations?.find(item => item.finish === finish);
+              const labels = variant ? Object.entries(variant.values).map(([name, value]) => `${name} ${value}`).join(" ") : finish;
+              return `${finish} ${labels}`.toLowerCase().includes(variationQuery.trim().toLowerCase());
+            }).map(finish => {
+              const key = `${product.id}::${finish}`;
+              const retiredFinish = !product.finishes.includes(finish);
+              const reserved = finishReservedStock(product, finish);
+              const quantity = Number(drafts[key] ?? finishStock(product, finish));
+              const available = Math.max(0, (Number.isFinite(quantity) ? quantity : 0) - reserved);
+              const colorAttribute = product.variationAttributes?.find(attribute => attribute.name.toLowerCase().includes("color"));
+              const colorValue = colorAttribute && product.variations?.find(variant => variant.finish === finish)?.values[colorAttribute.name];
+              const variation = product.variations?.find(variant => variant.finish === finish);
+              const values = variation?.values ?? {};
+              const currentPriceCents = variation?.pricePhpCents ?? Math.round(product.price * 100);
+              const fallbackPrice = (currentPriceCents / 100).toFixed(2);
+              const stockEdited = drafts[key] !== undefined && drafts[key] !== String(finishStock(product, finish));
+              const draftPrice = priceDrafts[key];
+              const priceEdited = Boolean(variation && draftPrice !== undefined && (
+                !/^\d+(?:\.\d{1,2})?$/.test(draftPrice) ||
+                Math.round(Number(draftPrice) * 100) !== currentPriceCents
+              ));
+              const hasEdits = stockEdited || priceEdited;
+              const cancelEdits = () => {
+                setDrafts(current => { const next = { ...current }; delete next[key]; return next; });
+                setPriceDrafts(current => { const next = { ...current }; delete next[key]; return next; });
+              };
+              return <article key={key} className="grid gap-3 border-b border-white/[.06] p-4 last:border-b-0 sm:p-5 lg:grid-cols-[minmax(0,1.5fr)_repeat(2,minmax(110px,.55fr))_minmax(65px,.3fr)_minmax(65px,.3fr)_auto] lg:items-center lg:gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-sm font-semibold leading-5 text-white/85">{colorAttribute && <span className="size-3 shrink-0 rounded-full border border-white/20" style={{ backgroundColor: colorAttribute.colors?.[colorValue ?? ""] ?? finishColor(colorValue ?? finish) }} />}{finish}{retiredFinish && <span className="text-[9px] font-bold uppercase tracking-wider text-amber-300/70">Retired option</span>}</div>
+                  {Object.keys(values).length > 0 && <div className="mt-1.5 flex flex-wrap gap-1">{Object.entries(values).map(([name, value]) => <span key={name} className="inline-flex items-center gap-1.5 rounded-sm bg-white/[.04] px-2 py-1 text-[9px] uppercase tracking-[.06em] text-white/55"><span className="text-white/35">{name}:</span><span>{value}</span></span>)}</div>}
+                </div>
+                {variation ? <label className="grid min-w-0 gap-1 text-[9px] font-bold uppercase tracking-[.1em] text-white/40">Price (PHP)<input type="number" min="0" max="21474836.47" step="0.01" inputMode="decimal" aria-label={`${product.name} ${finish} price in PHP`} value={priceDrafts[key] ?? fallbackPrice} onChange={event => setPriceDrafts(current => ({ ...current, [key]: event.target.value }))} className={inputClass} /></label> : <div className="text-xs text-white/35">Retired</div>}
+                <label className="grid min-w-0 gap-1 text-[9px] font-bold uppercase tracking-[.1em] text-white/40">On hand<input type="number" min={reserved} max={2147483647} step="1" inputMode="numeric" aria-label={`${product.name} ${finish} units on hand`} value={drafts[key] ?? finishStock(product, finish)} onChange={event => setDrafts(current => ({ ...current, [key]: event.target.value }))} className={inputClass} /></label>
+                <div className="grid gap-1 text-[9px] font-bold uppercase tracking-[.1em] text-white/40"><span>Reserved</span><span className="flex h-11 items-center text-sm font-semibold tabular-nums text-white/75">{reserved}</span></div>
+                <div className="grid gap-1 text-[9px] font-bold uppercase tracking-[.1em] text-white/40"><span>Available</span><span className={`flex h-11 items-center text-sm font-bold tabular-nums ${available ? "text-emerald-300" : "text-[#ff5a36]"}`}>{available}</span></div>
+                {hasEdits && <div className="flex flex-wrap gap-2 lg:justify-end">
+                  <button onClick={cancelEdits} disabled={savingId === key} className="h-11 border border-white/20 px-4 text-[10px] font-black uppercase tracking-[.1em] text-white/70 transition hover:border-white/50 hover:text-white disabled:opacity-40">Cancel</button>
+                  <button onClick={() => void saveVariation(product, finish)} disabled={savingId === key} className="h-11 bg-[#ff5a36] px-4 text-[10px] font-black uppercase tracking-[.1em] text-black transition hover:bg-white disabled:opacity-40">{savingId === key ? "Saving…" : "Save changes"}</button>
+                </div>}
+              </article>;
+            })}
+            </div>
+          </details>
+        ))}
         {visibleProducts.length === 0 && (
           <p className="p-8 text-center text-sm text-white/45">
             {products.length ? "No items match this search." : "No shop items yet."}
@@ -2204,6 +2250,7 @@ function CategoryRow({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => setDraft(category), [category]);
+  const nameEdited = draft.name !== category.name;
 
   const update = (name: string) => setDraft(current => ({ ...current, name }));
 
@@ -2305,15 +2352,18 @@ function CategoryRow({
           >
             <ChevronDown size={16} />
           </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={busy}
-            className="inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-4 text-xs font-bold text-black disabled:opacity-50"
-          >
-            <Save size={14} />
-            Save
-          </button>
+          {nameEdited && <>
+            <button type="button" onClick={() => setDraft(category)} disabled={busy} className="inline-flex h-10 items-center border border-white/20 px-4 text-xs font-bold text-white/70 transition hover:border-white/50 hover:text-white disabled:opacity-50">Cancel</button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={busy}
+              className="inline-flex h-10 items-center gap-2 bg-[#ff5a36] px-4 text-xs font-bold text-black disabled:opacity-50"
+            >
+              <Save size={14} />
+              Save
+            </button>
+          </>}
           <button
             type="button"
             onClick={() => void remove()}
@@ -3060,6 +3110,7 @@ function RoleManager({
 
 function ShippingRatesManager({ products }: { products: Product[] }) {
   const [rates, setRates] = useState<ShippingRate[]>([]);
+  const [savedRates, setSavedRates] = useState<ShippingRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingCode, setSavingCode] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -3074,7 +3125,9 @@ function ShippingRatesManager({ products }: { products: Product[] }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRates(await fetchShippingRates());
+      const loadedRates = await fetchShippingRates();
+      setRates(loadedRates);
+      setSavedRates(loadedRates);
     } catch (error) {
       toast.error("Could not load shipping rates.", {
         description: error instanceof Error ? error.message : "Try again.",
@@ -3093,6 +3146,20 @@ function ShippingRatesManager({ products }: { products: Product[] }) {
         rate.country_code === code ? { ...rate, ...patch } : rate
       )
     );
+  const hasRateChanges = (rate: ShippingRate) => {
+    const saved = savedRates.find(item => item.country_code === rate.country_code);
+    return !!saved && (
+      rate.country_name !== saved.country_name ||
+      rate.first_kg_cents !== saved.first_kg_cents ||
+      rate.per_500g_cents !== saved.per_500g_cents ||
+      rate.max_weight_kg !== saved.max_weight_kg ||
+      rate.enabled !== saved.enabled
+    );
+  };
+  const cancelRateChanges = (code: string) => {
+    const saved = savedRates.find(rate => rate.country_code === code);
+    if (saved) updateRate(code, saved);
+  };
   const save = async (rate: ShippingRate) => {
     if (
       !rate.country_name.trim() ||
@@ -3345,13 +3412,24 @@ function ShippingRatesManager({ products }: { products: Product[] }) {
                   />
                   Active
                 </label>
-                <button
+                {hasRateChanges(rate) ? (
+                  <div className="flex h-11 items-center gap-2">
+                    <button
                   onClick={() => void save(rate)}
                   disabled={savingCode === rate.country_code}
                   className="h-11 border border-white/20 px-4 text-[10px] font-black uppercase tracking-[.14em] text-white transition hover:border-[#ff5a36] hover:text-[#ff5a36] disabled:opacity-40"
                 >
                   {savingCode === rate.country_code ? "Saving…" : "Save rate"}
                 </button>
+                    <button
+                      onClick={() => cancelRateChanges(rate.country_code)}
+                      disabled={savingCode === rate.country_code}
+                      className="h-11 border border-white/10 px-3 text-[10px] font-black uppercase tracking-[.14em] text-white/55 transition hover:border-white/30 hover:text-white disabled:opacity-40"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>

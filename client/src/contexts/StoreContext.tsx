@@ -1,6 +1,6 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useCatalog } from "@/contexts/CatalogContext";
-import type { Product } from "@/data/products";
+import { availableFinishStock, variationPrice, type Product } from "@/data/products";
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 
 export type CartLine = { id: string; quantity: number; finish: string };
@@ -95,7 +95,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const totalItems = cart.reduce((count, line) => count + line.quantity, 0);
     const subtotal = cart.reduce((sum, line) => {
       const item = products.find((product) => product.id === line.id);
-      return sum + (item?.price ?? 0) * line.quantity;
+      return sum + (item ? variationPrice(item, line.finish) : 0) * line.quantity;
     }, 0);
 
     return {
@@ -107,7 +107,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       closeCart: () => setCartOpen(false),
       addToCart: (product, finish = product.finishes[0]) => {
         if (!finish) return;
-        const available = Math.max(0, product.stockQuantity - product.reservedQuantity);
+        const available = availableFinishStock(product, finish);
         if (!available) return;
         setCart((lines) => {
           const existing = lines.find((line) => line.id === product.id && line.finish === finish);
@@ -119,7 +119,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       updateQuantity: (id, finish, quantity) => {
         const product = products.find((item) => item.id === id);
-        const available = product ? Math.max(0, product.stockQuantity - product.reservedQuantity) : 0;
+        const available = product ? availableFinishStock(product, finish) : 0;
         setCart((lines) => lines.flatMap((line) => {
           if (line.id !== id || line.finish !== finish) return [line];
           const requested = Math.floor(quantity);

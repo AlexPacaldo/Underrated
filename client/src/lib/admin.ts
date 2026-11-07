@@ -205,6 +205,21 @@ export async function saveAdminProduct(product: Product) {
         descriptor: product.descriptor.trim(),
         description: product.description.trim(),
         finishes: product.finishes,
+        variation_attributes: product.variationAttributes ?? [],
+        variations: (product.variations ?? []).map(variation => ({
+          finish: variation.finish,
+          values: variation.values,
+          price_php_cents: variation.pricePhpCents ?? Math.max(0, Math.round(product.price * 100)),
+        })),
+        finish_stock: Object.fromEntries(
+          [...new Set([
+            ...product.finishes,
+            ...Object.keys(product.finishStock ?? {}).filter(finish =>
+              (product.finishStock?.[finish] ?? 0) > 0 ||
+              (product.finishReservedStock?.[finish] ?? 0) > 0
+            ),
+          ])].map(finish => [finish, Math.max(0, product.finishStock?.[finish] ?? 0)])
+        ),
         image_path: image,
         images,
         // Framing is written against the final photo list, so removing a photo cannot leave a stale crop behind.
@@ -235,14 +250,46 @@ export async function saveAdminProduct(product: Product) {
   return mapProduct(data);
 }
 
-export async function saveAdminProductStock(
+export async function saveAdminProductFinishStock(
   productId: string,
+  finish: string,
   stockQuantity: number
 ) {
   if (!supabase) throw new Error("Supabase is not configured.");
-  const { error } = await supabase.rpc("admin_set_product_stock", {
+  const { error } = await supabase.rpc("admin_set_product_finish_stock", {
     p_product_id: productId,
+    p_finish: finish,
     p_stock_quantity: stockQuantity,
+  });
+  if (error) throw error;
+}
+
+export async function saveAdminProductVariationPrice(
+  productId: string,
+  finish: string,
+  pricePhpCents: number
+) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase.rpc("admin_set_product_variation_price", {
+    p_product_id: productId,
+    p_finish: finish,
+    p_price_php_cents: pricePhpCents,
+  });
+  if (error) throw error;
+}
+
+export async function saveAdminProductVariation(
+  productId: string,
+  finish: string,
+  stockQuantity: number,
+  pricePhpCents: number | null
+) {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { error } = await supabase.rpc("admin_set_product_variation", {
+    p_product_id: productId,
+    p_finish: finish,
+    p_stock_quantity: stockQuantity,
+    p_price_php_cents: pricePhpCents,
   });
   if (error) throw error;
 }

@@ -2,6 +2,7 @@
  * Design direction: Technical Drop Editorial — the cart is a sliding workshop drawer with plain-language prototype status.
  */
 import { useCatalog } from "@/contexts/CatalogContext";
+import { availableFinishStock, variationPrice } from "@/data/products";
 import { useCurrency } from "@/contexts/CurrencyContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAddressBook } from "@/contexts/AddressBookContext";
@@ -173,7 +174,8 @@ export default function CartDrawer() {
       cart,
       products,
       shippingRates,
-      subtotal
+      subtotal,
+      rate
     );
   }, [
     activeAddress,
@@ -197,7 +199,7 @@ export default function CartDrawer() {
     const product = products.find(item => item.id === line.id);
     return (
       product !== undefined &&
-      product.stockQuantity - product.reservedQuantity < line.quantity
+      availableFinishStock(product, line.finish) < line.quantity
     );
   });
   const hasStockIssues = stockIssueLines.length > 0;
@@ -452,12 +454,14 @@ export default function CartDrawer() {
                             <p className="font-display text-xl uppercase leading-none text-white">
                               {product.name}
                             </p>
-                            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">
-                              {line.finish}
-                            </p>
+                            {!(product.variationAttributes?.length === 0 && line.finish === "Standard") ? (
+                              <p className="mt-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">
+                                {line.finish}
+                              </p>
+                            ) : null}
                           </div>
                           <span className="shrink-0 pt-0.5 text-sm font-bold text-white">
-                            {formatMoney(product.price)}
+                            {formatMoney(variationPrice(product, line.finish))}
                           </span>
                         </div>
                         <div className="mt-3.5 flex items-center justify-between gap-3">
@@ -489,7 +493,7 @@ export default function CartDrawer() {
                               aria-label={`Increase ${product.name} quantity`}
                               disabled={
                                 line.quantity >=
-                                product.stockQuantity - product.reservedQuantity
+                                availableFinishStock(product, line.finish)
                               }
                               className="grid size-8 place-items-center text-white/60 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
                             >

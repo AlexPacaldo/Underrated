@@ -70,11 +70,12 @@ export function quoteShipping(
   cart: CartLine[],
   products: Product[],
   rates: ShippingRate[],
-  subtotal: number
+  subtotal: number,
+  phpToUsdRate: number
 ): ShippingQuote {
   if (region === "ph")
     return {
-      amount: subtotal >= 5000 ? 0 : 250,
+      amount: subtotal >= 5000 ? 0 : 250 + (phpToUsdRate > 0 ? 6 / phpToUsdRate : 0),
       weightKg: 0,
       steps: 0,
       rate: null,
@@ -131,8 +132,9 @@ export function quoteShipping(
       error: `This parcel exceeds the ${rate.max_weight_kg} kg limit for ${rate.country_name}.`,
     };
   const steps = weightKg <= 1 ? 0 : Math.ceil((weightKg - 1) / 0.5 - 1e-9);
+  const baseAmount = (rate.first_kg_cents + steps * rate.per_500g_cents) / 100;
   return {
-    amount: (rate.first_kg_cents + steps * rate.per_500g_cents) / 100,
+    amount: baseAmount + (phpToUsdRate > 0 ? 6 / phpToUsdRate : 0),
     weightKg,
     steps,
     rate,

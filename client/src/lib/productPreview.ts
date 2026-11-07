@@ -1,7 +1,7 @@
 /**
  * Design direction: Technical Drop Editorial — the admin item editor and its preview frame talk over one small typed message protocol.
  */
-import type { Product, ProductVisual, ProductImagePosition } from "@/data/products";
+import type { Product, ProductVisual, ProductImagePosition, ProductVariation, ProductVariationAttribute } from "@/data/products";
 import { isProductImageFrame, isProductImagePosition, normalizeCardImageZoom } from "@/data/products";
 
 export const productPreviewPath = "/admin/product-preview";
@@ -83,6 +83,29 @@ export function readPreviewProduct(data: unknown): Product | null {
   }
   const cardImagePosition = isProductImagePosition(row.card_image_position) ? row.card_image_position : undefined;
   const cardImageZoom = normalizeCardImageZoom(row.card_image_zoom);
+  const variationAttributes: ProductVariationAttribute[] = Array.isArray(row.variationAttributes)
+    ? row.variationAttributes.flatMap((item) => {
+        const attribute = asRecord(item);
+        const options = list(attribute.options);
+        const rawColors = asRecord(attribute.colors);
+        const colors = Object.fromEntries(Object.entries(rawColors).filter((entry): entry is [string, string] =>
+          typeof entry[1] === "string" && /^#[\da-f]{6}$/i.test(entry[1])
+        ));
+        return typeof attribute.name === "string" && options.length
+          ? [{ name: attribute.name, options, ...(Object.keys(colors).length ? { colors } : {}) }]
+          : [];
+      })
+    : [];
+  const variations: ProductVariation[] = Array.isArray(row.variations)
+    ? row.variations.flatMap((item) => {
+        const variant = asRecord(item);
+        const values = asRecord(variant.values);
+        const pricePhpCents = Number(variant.pricePhpCents ?? variant.price_php_cents);
+        return typeof variant.finish === "string"
+          ? [{ finish: variant.finish, values: Object.fromEntries(Object.entries(values).filter((entry): entry is [string, string] => typeof entry[1] === "string")), ...(Number.isSafeInteger(pricePhpCents) && pricePhpCents >= 0 ? { pricePhpCents } : {}) }]
+          : [];
+      })
+    : [];
   return {
     id: text(row.id, "draft"),
     slug: text(row.slug, ""),
@@ -93,6 +116,8 @@ export function readPreviewProduct(data: unknown): Product | null {
     descriptor: text(row.descriptor, ""),
     description: text(row.description, ""),
     finishes: list(row.finishes),
+    variationAttributes: Array.isArray(row.variationAttributes) ? variationAttributes : [{ name: "Color", options: list(row.finishes) }],
+    variations: Array.isArray(row.variations) ? variations : list(row.finishes).map(finish => ({ finish, values: { Color: finish } })),
     image,
     images: images.filter((item) => item !== image),
     image_positions: imagePositions,

@@ -18,6 +18,8 @@ import {
   type CatalogCategory,
   type Product,
   type ProductVisual,
+  type ProductVariation,
+  type ProductVariationAttribute,
 } from "@/data/products";
 import {
   defaultHomepageContent,
@@ -60,6 +62,41 @@ export function mapProduct(value: unknown): Product {
     : "hoods";
   const rawFinishes = Array.isArray(row.finishes)
     ? row.finishes.filter((item): item is string => typeof item === "string")
+    : [];
+  const rawAttributes = Array.isArray(row.variation_attributes)
+    ? row.variation_attributes.flatMap(item => {
+        const attribute = asRecord(item);
+        const options = Array.isArray(attribute.options)
+          ? attribute.options.filter((option): option is string => typeof option === "string")
+          : [];
+        const rawColors = attribute.colors && typeof attribute.colors === "object" && !Array.isArray(attribute.colors)
+          ? attribute.colors as Record<string, unknown>
+          : {};
+        const colors = Object.fromEntries(Object.entries(rawColors).filter((entry): entry is [string, string] =>
+          typeof entry[1] === "string" && /^#[\da-f]{6}$/i.test(entry[1])
+        ));
+        return typeof attribute.name === "string" && options.length
+          ? [{ name: attribute.name, options, ...(Object.keys(colors).length ? { colors } : {}) }]
+          : [];
+      })
+    : [];
+  const variationAttributes: ProductVariationAttribute[] = Array.isArray(row.variation_attributes)
+    ? rawAttributes
+    : [{ name: "Color", options: rawFinishes }];
+  const variations: ProductVariation[] = Array.isArray(row.variations)
+    ? row.variations.flatMap(item => {
+        const variant = asRecord(item);
+        const values = asRecord(variant.values);
+        return typeof variant.finish === "string"
+          ? [{
+              finish: variant.finish,
+              values: Object.fromEntries(Object.entries(values).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
+              ...(Number.isSafeInteger(Number(variant.price_php_cents)) && Number(variant.price_php_cents) >= 0
+                ? { pricePhpCents: Number(variant.price_php_cents) }
+                : {}),
+            }]
+          : [];
+      })
     : [];
   const rawSpecs = Array.isArray(row.specs) ? row.specs : [];
   const specs = rawSpecs.flatMap(item => {
@@ -111,11 +148,21 @@ export function mapProduct(value: unknown): Product {
         : undefined,
     stockQuantity: Math.max(0, Number(row.stock_quantity ?? 0)),
     reservedQuantity: Math.max(0, Number(row.reserved_quantity ?? 0)),
+    finishStock: row.finish_stock && typeof row.finish_stock === "object" && !Array.isArray(row.finish_stock)
+      ? Object.fromEntries(Object.entries(row.finish_stock as Record<string, unknown>).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]))
+      : undefined,
+    finishReservedStock: row.finish_reserved_stock && typeof row.finish_reserved_stock === "object" && !Array.isArray(row.finish_reserved_stock)
+      ? Object.fromEntries(Object.entries(row.finish_reserved_stock as Record<string, unknown>).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]))
+      : undefined,
     badge:
       typeof row.badge === "string" && row.badge.trim() ? row.badge : undefined,
     descriptor: String(row.descriptor ?? ""),
     description: String(row.description ?? ""),
     finishes: rawFinishes,
+    variationAttributes,
+    variations: Array.isArray(row.variations)
+      ? variations
+      : rawFinishes.map(finish => ({ finish, values: { [variationAttributes[0]?.name ?? "Color"]: finish } })),
     image,
     images,
     image_positions,
@@ -275,7 +322,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
       supabase
         .from("products")
         .select(
-          "id,slug,name,category,price_php_cents,shipping_weight_kg,stock_quantity,reserved_quantity,badge,descriptor,description,finishes,image_path,images,image_positions,image_frames,card_image_position,card_image_zoom,visual,specs,fitment,featured,archived,sort_order"
+          "id,slug,name,category,price_php_cents,shipping_weight_kg,stock_quantity,reserved_quantity,finish_stock,finish_reserved_stock,badge,descriptor,description,finishes,variation_attributes,variations,image_path,images,image_positions,image_frames,card_image_position,card_image_zoom,visual,specs,fitment,featured,archived,sort_order"
         )
         .eq("archived", false)
         .order("sort_order", { ascending: true }),

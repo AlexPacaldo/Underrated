@@ -122,10 +122,15 @@ export type Product = {
   stockQuantity: number;
   /** Units held for orders that have not shipped yet. */
   reservedQuantity: number;
+  /** Physical and reserved quantities keyed by customer-facing finish. */
+  finishStock?: Record<string, number>;
+  finishReservedStock?: Record<string, number>;
   badge?: string;
   descriptor: string;
   description: string;
   finishes: string[];
+  variationAttributes?: ProductVariationAttribute[];
+  variations?: ProductVariation[];
   image?: string;
   /** Extra photos beyond the primary image, in gallery order. */
   images?: string[];
@@ -149,6 +154,48 @@ export type Product = {
   sortOrder?: number;
 };
 
+export type ProductVariationAttribute = { name: string; options: string[]; colors?: Record<string, string> };
+export type ProductVariation = { finish: string; values: Record<string, string>; pricePhpCents?: number };
+
+export function variationPrice(product: Product, finish: string) {
+  const cents = product.variations?.find(item => item.finish === finish)?.pricePhpCents;
+  return typeof cents === "number" && Number.isSafeInteger(cents) && cents >= 0
+    ? cents / 100
+    : product.price;
+}
+
+export function startingVariationPrice(product: Product) {
+  const prices = product.variations
+    ?.map(variation => variation.pricePhpCents)
+    .filter((price): price is number => typeof price === "number" && Number.isSafeInteger(price) && price >= 0);
+  return prices?.length ? Math.min(...prices) / 100 : product.price;
+}
+
+export function variationFinish(
+  attributes: ProductVariationAttribute[],
+  values: Record<string, string>
+) {
+  if (attributes.length === 0) return "Standard";
+  if (attributes.length === 1) return values[attributes[0].name] ?? "";
+  return attributes.map(attribute => `${attribute.name}: ${values[attribute.name] ?? ""}`).join(" · ");
+}
+
+export function finishStock(product: Product, finish: string) {
+  return Math.max(0, product.finishStock
+    ? product.finishStock[finish] ?? 0
+    : product.stockQuantity);
+}
+
+export function finishReservedStock(product: Product, finish: string) {
+  return Math.max(0, product.finishReservedStock
+    ? product.finishReservedStock[finish] ?? 0
+    : product.reservedQuantity);
+}
+
+export function availableFinishStock(product: Product, finish: string) {
+  return Math.max(0, finishStock(product, finish) - finishReservedStock(product, finish));
+}
+
 export type CatalogCategory = {
   id: string;
   name: string;
@@ -168,7 +215,17 @@ export const products: Product[] = [
     descriptor: "Variation without compromise.",
     description:
       "A sculpted grip profile for the riders who tune every touchpoint. Built to feel planted in the sprint and quiet on the long way home.",
-    finishes: ["Graphite", "Iced White", "Deep Blue"],
+    finishes: [
+      "Matte Black",
+      "Graphite",
+      "Iced White",
+      "Silver",
+      "Violet",
+      "Yellow",
+      "Green",
+      "Pink",
+      "Signal Red",
+    ],
     visual: "hoods",
     specs: [
       { label: "Fit", value: "Road STI" },
