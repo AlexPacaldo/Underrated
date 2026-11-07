@@ -22,6 +22,7 @@ import {
   Undo2,
   Upload,
   Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import PreviewStage from "@/components/admin/PreviewStage";
@@ -230,12 +231,12 @@ function OrderCard({
   };
 
   return (
-    <article className="overflow-hidden rounded-lg border border-white/15 bg-[#111214]">
+    <article className="rounded-lg border border-white/15 bg-[#111214]">
       <button
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded(value => !value)}
-        className="grid w-full gap-3 p-4 text-left transition hover:bg-white/[.025] sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-5 sm:px-5"
+        className={`grid w-full gap-3 p-4 text-left transition hover:bg-[#17181a] sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-5 sm:px-5 ${expanded ? "sticky top-0 z-20 rounded-t-lg border-b border-white/10 bg-[#17181a] shadow-lg" : ""}`}
       >
         <div className="flex min-w-0 items-center gap-3">
           <ChevronDown
@@ -293,9 +294,6 @@ function OrderCard({
             </p>
           </div>
         </div>
-        <span className="hidden text-[10px] font-bold uppercase tracking-[.12em] text-white/30 sm:block">
-          {expanded ? "Close" : "Details"}
-        </span>
       </button>
 
       {expanded ? (
@@ -1132,8 +1130,9 @@ function ProductEditor({
           </p>
           <button
             onClick={onCancel}
-            className="text-[10px] font-black uppercase tracking-[.14em] text-white/45 hover:text-white"
+            className="inline-flex h-10 items-center gap-2 border border-[#ff5a36] bg-[#ff5a36] px-4 text-xs font-black uppercase tracking-[.14em] text-black shadow-[0_0_18px_rgba(255,90,54,.2)] transition hover:bg-[#ff7658] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
           >
+            <X size={15} strokeWidth={3} />
             Close
           </button>
         </div>
@@ -2152,10 +2151,10 @@ function InventoryManager({
         </label>
       </div>
 
-      <div className="overflow-hidden border border-white/15">
+      <div className="border border-white/15">
         {visibleProducts.map(product => (
           <details key={product.id} className="group border-b border-white/10 last:border-b-0">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-white/[.02] px-4 py-4 outline-none transition hover:bg-white/[.045] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ff5a36] sm:px-5 [&::-webkit-details-marker]:hidden">
+            <summary className="group-open:sticky group-open:top-0 group-open:z-20 flex cursor-pointer list-none items-center justify-between gap-4 bg-[#111214] px-4 py-4 outline-none transition hover:bg-[#17181a] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#ff5a36] group-open:bg-[#17181a] group-open:hover:bg-[#17181a] group-open:shadow-lg sm:px-5 [&::-webkit-details-marker]:hidden">
               <span className="min-w-0"><span className="block truncate font-bold text-white">{product.name}</span><span className="mt-1 block text-xs text-white/40">{product.category}{product.archived ? " · Archived" : ""} · {inventoryFinishes(product).filter(finish => {
                 if (!variationQuery.trim()) return true;
                 const variant = product.variations?.find(item => item.finish === finish);

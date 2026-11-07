@@ -41,6 +41,11 @@ function StorefrontRoutes() {
 }
 
 function Router() {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+
   return <Switch><Route path="/admin" component={Admin} /><Route component={StorefrontRoutes} /></Switch>;
 }
 
